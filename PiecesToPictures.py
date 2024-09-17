@@ -1,86 +1,70 @@
 import os
-import random
 import pygame
 from pygame import Rect
 from pygame.math import Vector2
-from PIL import Image
+import random
 
 
-class GameState():
-    def __init__(self):
-        self.worldSize = Vector2(640,896)
-        self.boardSize = Vector2(600,600)
-        self.boardPosition = Vector2(30,200)
+tiles = [Vector2(x,y) for x in range(5) for y in range(5)]
+
+class Tile():
+    def __init__(self,grid,rect,position,state,points):
+        self.textureGrid = grid
+        self.textureRect = rect
+        self.position = position
+        self.state = state
+        self.points = points
 
 
 class GameLevel():
     def __init__(self):
-        self.tileQueue = []
-        # Level variables
-        self.randomSeed = 10                                                              ####################################
-        self.gameDifficulty = 'Normal'                                                    #########  testing values  #########
-        self.pictureImage = pygame.image.load("avengers.jpg")                             ####################################
-        
-        
+        self.gameDifficulty = 'Normal'
+        self.pictureImage = pygame.image.load("avengers.jpg") 
 
-class Command():
-    def run(self):
-        raise NotImplementedError()
 
-# class NewTileCommand(Command):
-#     def __init__(self,state):
-#         self.state = state
-#     def run(self):
-#         self.unit.lastBulletEpoch = self.state.epoch
-#         self.state.bullets.append(Bullet(self.state,self.unit))
-    
+class GameState():
+    def __init__(self):
+        self.worldSize = Vector2(700,896)
+        self.boardSize = Vector2(600,600)
+        self.boardPosition = Vector2(80,200)
+        self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Harder': [6,100], 'Hardest': [7,85]}
+        self.queue = []
+        self.board = []
+
+    def NewTile(self):
+        if len(self.queue)>0:
+            tile = self.queue.pop(0)
+            self.board[int(tile.position.x)][int(tile.position.y)] = tile
+
 
 class UserInterface():
     def __init__(self):
         pygame.init()
         
         # Game state
-        self.inGame = True
-        self.gameLevel = 0
+        self.level = GameLevel()
         self.gameState = GameState()
 
-        # Rendering properties
-        random.seed(randomSeed)
-        self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Harder': [6,100], 'Hardest': [7,85]}
-        self.cellSize = Vector2(self.difficulties[self.gameDifficulty][1],self.difficulties[self.gameDifficulty][1])
-        self.pictureSize = Vector2(self.pictureImage.get_size())
+        self.cellSize = Vector2(self.gameState.difficulties[self.level.gameDifficulty][1],self.gameState.difficulties[self.level.gameDifficulty][1])
+        self.pictureSize = Vector2(self.level.pictureImage.get_size())
         self.pictureCellRatios = self.gameState.boardSize.elementwise() / self.pictureSize.elementwise()
-        self.pictureCellRatio = max(self.pictureCellRatio.x,self.pictureCellRatio.y)
-        self.pictureImage = pygame.transform.smoothscale(self.pictureImage, self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio)
+        self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
+        self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
+        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.gameState.difficulties[self.level.gameDifficulty][0])).elementwise()//2
 
+        self.windowSize = self.gameState.worldSize
+        self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
 
-        # Tile queue
+        self.NewTileQueue()
+        self.NewBoard()
 
-        
-        # Window
-        windowSize = self.gameState.worldSize
-        pygame.display.set_caption("Pieces to Pictures")
-        pygame.display.set_icon(pygame.image.load("icon80.png"))
-        self.window = pygame.display.set_mode((int(windowSize.x),int(windowSize.y)))
-        
-        # Controls
-        self.newTile = self.gameState.tiles.pop(0)
-        self.commands = []
-        
         # Loop properties
         self.clock = pygame.time.Clock()
         self.running = True
-        
-    @property
-    def cellWidth(self):
-        return int(self.cellSize.x)
-
-    @property
-    def cellHeight(self):
-        return int(self.cellSize.y)
 
     def processInput(self):
         self.moveTileCommand = Vector2(0,0)
+        self.newTileCommand = False
         mouseClicked = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -90,43 +74,51 @@ class UserInterface():
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                     break
-                elif event.key == pygame.K_RIGHT:
-                    self.moveTileCommand.x = 1
-                elif event.key == pygame.K_LEFT:
-                    self.moveTileCommand.x = -1
-                elif event.key == pygame.K_DOWN:
-                    self.moveTileCommand.y = 1
-                elif event.key == pygame.K_UP:
-                    self.moveTileCommand.y = -1
+                elif event.key == pygame.K_SPACE:
+                    self.newTileCommand = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                mouseClicked = True
-                
-        # Shoot if left mouse was clicked
-        if mouseClicked:
-            self.commands.append(
-                NewTileCommand(self.gameState,self.newTile)
-            )
-                    
+                #mouseClicked = True
+                self.newTileCommand = True
+
     def update(self):
-        self.gameState.update(self.moveTileCommand)
-        
+        if self.newTileCommand:
+            self.gameState.NewTile()
+
+    def NewTileQueue(self):
+        for x in range(self.gameState.difficulties[self.level.gameDifficulty][0]):
+            for y in range(self.gameState.difficulties[self.level.gameDifficulty][0]):
+                unit = Vector2(x,y)
+                position = Vector2(0,0)
+                texturePoint = unit.elementwise()*self.cellSize + self.pictureOffset
+                textureRect = Rect(int(texturePoint.x), int(texturePoint.y), int(self.cellSize.x),int(self.cellSize.y))
+                self.gameState.queue.append(Tile(texturePoint,textureRect,position,'queue',10))
+        random.shuffle(self.gameState.queue)
+
+    def NewBoard(self):
+        self.gameState.board = [[0 for x in range(self.gameState.difficulties[self.level.gameDifficulty][0])] for y in range(self.gameState.difficulties[self.level.gameDifficulty][0])]
+
+    def renderTile(self,tile):
+        spritePoint = tile.position.elementwise()*self.cellSize + self.gameState.boardPosition
+        self.window.blit(self.pictureImage,spritePoint,tile.textureRect)
+
+
     def render(self):
         self.window.fill((0,0,0))
-        
-        pygame.display.update()    
-        
+
+        for row in self.gameState.board:
+            for tile in row:
+                if tile != 0:
+                    self.renderTile(tile)
+
+        pygame.display.update()   
+
     def run(self):
-        while self.inGame:
-            self.gameLevel = GameLevel()
-            while self.running:
-                self.processInput()
-                #self.update()
-                self.render()
-                self.clock.tick(60)
+        while self.running:
+            self.processInput()
+            self.update()
+            self.render()
+            self.clock.tick(60)
 
 
-
-userInterface = UserInterface()
-userInterface.run()
-
-pygame.quit()
+ui = UserInterface()
+ui.run()
