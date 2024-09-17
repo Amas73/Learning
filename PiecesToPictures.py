@@ -45,12 +45,13 @@ class UserInterface():
         self.level = GameLevel()
         self.gameState = GameState()
 
+        self.cellCount = self.gameState.difficulties[self.level.gameDifficulty][0]
         self.cellSize = Vector2(self.gameState.difficulties[self.level.gameDifficulty][1],self.gameState.difficulties[self.level.gameDifficulty][1])
         self.pictureSize = Vector2(self.level.pictureImage.get_size())
         self.pictureCellRatios = self.gameState.boardSize.elementwise() / self.pictureSize.elementwise()
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
         self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
-        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.gameState.difficulties[self.level.gameDifficulty][0])).elementwise()//2
+        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
 
         self.windowSize = self.gameState.worldSize
         self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
@@ -95,7 +96,7 @@ class UserInterface():
         random.shuffle(self.gameState.queue)
 
     def NewBoard(self):
-        self.gameState.board = [[0 for x in range(self.gameState.difficulties[self.level.gameDifficulty][0])] for y in range(self.gameState.difficulties[self.level.gameDifficulty][0])]
+        self.gameState.board = [[0 for x in range(self.cellCount)] for y in range(self.cellCount)]
 
     def renderTile(self,tile):
         spritePoint = tile.position.elementwise()*self.cellSize + self.gameState.boardPosition
