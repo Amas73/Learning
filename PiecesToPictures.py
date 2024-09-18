@@ -5,8 +5,6 @@ from pygame.math import Vector2
 import random
 
 
-tiles = [Vector2(x,y) for x in range(5) for y in range(5)]
-
 class Tile():
     def __init__(self,grid,rect,position,state,points):
         self.textureGrid = grid
@@ -22,6 +20,12 @@ class GameLevel():
         self.pictureImage = pygame.image.load("avengers.jpg") 
 
 
+class ThemeGraphics():
+    def __init__(self):
+        self.newTileButtonTexture = pygame.image.load("Arrow.png")
+        self.test = 'Hello world!'
+
+
 class GameState():
     def __init__(self):
         self.worldSize = Vector2(700,896)
@@ -31,10 +35,25 @@ class GameState():
         self.queue = []
         self.board = []
 
-    def NewTile(self):
-        if len(self.queue)>0:
-            tile = self.queue.pop(0)
-            self.board[int(tile.position.x)][int(tile.position.y)] = tile
+    def NewTile():
+        def __init__(self):
+            if len(self.queue)>0 and self.board[1][0] == 0:
+                tile = self.queue.pop(0)
+                self.board[int(tile.position.x)][int(tile.position.y)] = tile
+
+
+
+class MoveTile():
+    def __init__(tile,moveVector):
+        currentPosition = tile.position
+        newPosition = currentPosition + moveVector
+        #if newPosition == Vector2(0,0) or newPosition.x < 0 or newPosition.x >= 
+
+
+class AnimateTileMove():
+    def __init__(tile,currentPosition,changeVector,endPosition):
+        pass
+
 
 
 class UserInterface():
@@ -44,6 +63,7 @@ class UserInterface():
         # Game state
         self.level = GameLevel()
         self.gameState = GameState()
+        self.theme = ThemeGraphics()
 
         self.cellCount = self.gameState.difficulties[self.level.gameDifficulty][0]
         self.cellSize = Vector2(self.gameState.difficulties[self.level.gameDifficulty][1],self.gameState.difficulties[self.level.gameDifficulty][1])
@@ -52,12 +72,17 @@ class UserInterface():
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
         self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
         self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
+        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, ((150/4) * self.cellCount, (150/4) * self.cellCount))
 
         self.windowSize = self.gameState.worldSize
         self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
+        textureRect = Rect(0, 0, int(self.cellSize.x),int(self.cellSize.y))
+        self.newTileButton = Tile(Vector2(0,0),textureRect,Vector2(0,0),'button',0)
 
         self.NewTileQueue()
         self.NewBoard()
+
+        self.commands = []
 
         # Loop properties
         self.clock = pygame.time.Clock()
@@ -79,15 +104,18 @@ class UserInterface():
                     self.newTileCommand = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 #mouseClicked = True
-                self.newTileCommand = True
+                command = self.gameState.NewTile()
+                #mousePos = pygame.mouse.get_pos()
+        self.commands.append(command)
 
     def update(self):
-        if self.newTileCommand:
-            self.gameState.NewTile()
-
+        for command in self.commands:
+            command.run()
+        self.commands.clear()
+    
     def NewTileQueue(self):
-        for x in range(self.gameState.difficulties[self.level.gameDifficulty][0]):
-            for y in range(self.gameState.difficulties[self.level.gameDifficulty][0]):
+        for x in range(self.cellCount):
+            for y in range(self.cellCount):
                 unit = Vector2(x,y)
                 position = Vector2(0,0)
                 texturePoint = unit.elementwise()*self.cellSize + self.pictureOffset
@@ -111,6 +139,9 @@ class UserInterface():
                 if tile != 0:
                     self.renderTile(tile)
 
+        ### Render the New Tile Button
+        self.window.blit(self.newTileButtonImage,self.gameState.boardPosition,self.newTileButton.textureRect)
+
         pygame.display.update()   
 
     def run(self):
@@ -123,3 +154,5 @@ class UserInterface():
 
 ui = UserInterface()
 ui.run()
+
+pygame.quit()
