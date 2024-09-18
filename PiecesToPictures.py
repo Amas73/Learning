@@ -22,8 +22,7 @@ class GameLevel():
 
 class ThemeGraphics():
     def __init__(self):
-        self.newTileButtonTexture = pygame.image.load("Arrow.png")
-        self.test = 'Hello world!'
+        self.newTileButtonTexture = pygame.image.load("Arrow.jpg")
 
 
 class GameState():
@@ -35,11 +34,13 @@ class GameState():
         self.queue = []
         self.board = []
 
-    def NewTile():
-        def __init__(self):
-            if len(self.queue)>0 and self.board[1][0] == 0:
-                tile = self.queue.pop(0)
-                self.board[int(tile.position.x)][int(tile.position.y)] = tile
+class NewTile():
+    def __init__(self,state):
+        self.state = state
+    def run(self):
+        if len(self.state.queue)>0 and self.state.board[1][0] == 0:
+            tile = self.state.queue.pop(0)
+            self.state.board[int(tile.position.x)][int(tile.position.y)] = tile
 
 
 
@@ -72,7 +73,7 @@ class UserInterface():
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
         self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
         self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
-        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, ((150/4) * self.cellCount, (150/4) * self.cellCount))
+        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.cellCount, 150*4/self.cellCount))
 
         self.windowSize = self.gameState.worldSize
         self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
@@ -91,6 +92,7 @@ class UserInterface():
     def processInput(self):
         self.moveTileCommand = Vector2(0,0)
         self.newTileCommand = False
+        command = None
         mouseClicked = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -104,9 +106,10 @@ class UserInterface():
                     self.newTileCommand = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 #mouseClicked = True
-                command = self.gameState.NewTile()
+                command = NewTile(self.gameState)
                 #mousePos = pygame.mouse.get_pos()
-        self.commands.append(command)
+        if command is not None: 
+            self.commands.append(command)
 
     def update(self):
         for command in self.commands:
