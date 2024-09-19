@@ -15,30 +15,31 @@ class Tile():
         self.speed = speed
         self.moveVector = Vector2(0,0)
     def findEndPosition(self,vector,state):
-        newPosition = self.position + vector
+        newPosition = self.position
         while True:
-            newPosition = newPosition + vector
-            if len(state.board[0])<=newPosition.x>0 or len(state.board)<=newPosition.y>0\
+            newPosition += vector
+            print(newPosition)
+            if len(state.board)<=newPosition.x>0 or len(state.board[0])<=newPosition.y>0\
                 or state.board[int(newPosition.x)][(int(newPosition.y))] !=0:
                 break
-        self.endPosition = newPosition
+            self.endPosition = newPosition
     
 class MoveTile():
     def __init__ (self,tile,state):
         self.tile = tile
-        self.newPosition = self.tile.position + (self.tile.moveVector * self.tile.speed)
+        self.tile.position += (self.tile.moveVector * self.tile.speed)
         self.state = state
     def run(self):
-        if self.tile.position == self.tile.endPosition\
-            or self.newPosition == Vector2(0,0)\
-            or self.newPosition.x < 0\
-            or self.newPosition.x > self.state.cellCount\
-            or self.newPosition.y < 0\
-            or self.newPosition.y > self.state.cellCount:
+        if self.tile.position == self.tile.endPosition:
+            # or self.newPosition == Vector2(0,0)\
+            # or self.newPosition.x < 0\
+            # or self.newPosition.x > self.state.cellCount\
+            # or self.newPosition.y < 0\
+            # or self.newPosition.y > self.state.cellCount:
             self.state.board[int(self.tile.position.x)][int(self.tile.position.y)] = self.tile
             self.tile.status = 'board'
-        else:
-            self.tile.position = self.newPosition
+        # else:
+        #     self.tile.position = self.newPosition
             
 class NewTile():
     def __init__(self,state):
@@ -49,7 +50,7 @@ class NewTile():
             tile.moveVector = Vector2(1,0)
             tile.status = 'inflight'
             tile.findEndPosition(Vector2(1,0),self.state)
-            self.state.board[int(tile.position.x)][int(tile.position.y)] = tile
+            #self.state.board[int(tile.position.x)][int(tile.position.y)] = tile
             self.state.inFlightTiles.append(tile)
 
 class RemoveNonInflightTiles():
