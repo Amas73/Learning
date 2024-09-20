@@ -2,27 +2,28 @@ import pygame
 from pygame import Rect
 from pygame.math import Vector2
 import random
-
+from copy import copy
+from math import copysign
 
 class Tile():
     def __init__(self,grid,rect,position,status,points=0,speed=0.3):
         self.textureGrid = grid
         self.textureRect = rect
         self.position = position
-        self.endPosition = position
+        self.endPosition = copy(position)
         self.status = status
         self.points = points
         self.speed = speed
         self.moveVector = Vector2(0,0)
     def findEndPosition(self,vector,state):
-        newPosition = self.position
+        newPosition = copy(self.position)
         while True:
+            testedPosition = copy(newPosition)
             newPosition += vector
-            print(newPosition)
             if len(state.board)<=newPosition.x>0 or len(state.board[0])<=newPosition.y>0\
                 or state.board[int(newPosition.x)][(int(newPosition.y))] !=0:
                 break
-            self.endPosition = newPosition
+        self.endPosition = testedPosition
     
 class MoveTile():
     def __init__ (self,tile,state):
@@ -30,16 +31,10 @@ class MoveTile():
         self.tile.position += (self.tile.moveVector * self.tile.speed)
         self.state = state
     def run(self):
-        if self.tile.position == self.tile.endPosition:
-            # or self.newPosition == Vector2(0,0)\
-            # or self.newPosition.x < 0\
-            # or self.newPosition.x > self.state.cellCount\
-            # or self.newPosition.y < 0\
-            # or self.newPosition.y > self.state.cellCount:
+        if Vector2(int(self.tile.position.x),int(self.tile.position.y)) == self.tile.endPosition:
+            self.tile.position = copy(self.tile.endPosition)
             self.state.board[int(self.tile.position.x)][int(self.tile.position.y)] = self.tile
             self.tile.status = 'board'
-        # else:
-        #     self.tile.position = self.newPosition
             
 class NewTile():
     def __init__(self,state):
@@ -47,6 +42,7 @@ class NewTile():
     def run(self):
         if len(self.state.queue)>0 and self.state.board[1][0] == 0:
             tile = self.state.queue.pop(0)
+            self.state.board[0][0] = tile
             tile.moveVector = Vector2(1,0)
             tile.status = 'inflight'
             tile.findEndPosition(Vector2(1,0),self.state)
@@ -86,7 +82,8 @@ class GameState(GameLevel):
         self.board = []
         self.inFlightTiles = []
 
-
+def vectorInt(vector: Vector2) -> Vector2:
+    return Vector2(int(vector.x), int(vector.y))
 
 
 class UserInterface():
@@ -97,29 +94,32 @@ class UserInterface():
         self.gameState = GameState()
         self.theme = ThemeGraphics()
 
+        self.windowSize = self.gameState.worldSize
+        self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
+        self.boardRect = Rect(self.gameState.boardPosition.x,self.gameState.boardPosition.y,self.gameState.boardSize.x,self.gameState.boardSize.y)
+        
         self.pictureSize = Vector2(self.gameState.level.pictureImage.get_size())
         self.pictureCellRatios = self.gameState.boardSize.elementwise() / self.pictureSize.elementwise()
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
         self.pictureImage = pygame.transform.smoothscale(self.gameState.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
         self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.gameState.cellSize.elementwise()*self.gameState.cellCount)).elementwise()//2
+        
         self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
-
-        self.windowSize = self.gameState.worldSize
-        self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
         textureRect = Rect(0, 0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
         self.newTileButton = Tile(Vector2(0,0),textureRect,Vector2(0,0),'button',0)
+        self.newTileButtonRect = Rect(self.gameState.boardPosition.x,self.gameState.boardPosition.y,self.gameState.boardPosition.x+self.gameState.cellSize.x,self.gameState.boardPosition.y+self.gameState.cellSize.y)
 
         self.NewTileQueue()
         self.NewBoard()
 
         self.commands = []
+        self.mousePosStart = []
 
         # Loop properties
         self.clock = pygame.time.Clock()
         self.running = True
 
     def processInput(self):
-        mouseClicked = False
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -131,9 +131,30 @@ class UserInterface():
                 elif event.key == pygame.K_SPACE:
                     self.commands.append(NewTile(self.gameState))
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                #mouseClicked = True
-                self.commands.append(NewTile(self.gameState))
-                #mousePos = pygame.mouse.get_pos()
+                mousePos = pygame.mouse.get_pos()
+                if self.boardRect.collidepoint(mousePos):
+                    if self.newTileButtonRect.collidepoint(mousePos):
+                        self.commands.append(NewTile(self.gameState))
+                    else:
+                        mouseVector = vectorInt((Vector2(mousePos[0],mousePos[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
+                        if self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] !=0:
+                            self.mousePosStart = copy(mousePos)
+                            print(mousePos)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                mousePos = pygame.mouse.get_pos()
+                moveX = copysign(1,int(self.mousePosStart[0]-mousePos[0]))
+                moveY = copysign(1,int(self.mousePosStart[1]-mousePos[1]))
+                if moveX > moveY:
+                    moveVector = Vector2(moveX//abs(moveX),0)
+                elif moveY > moveX:
+                    moveVector = Vector2(0,moveY//abs(moveY))
+                else:
+                    moveVector = Vector2(0,0)
+                mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
+                tile = self.gameState.board[mouseVector.x][mouseVector.y]
+                tile.findEndPosition(moveVector,self.gameState)
+                self.commands.append(MoveTile(self.gameState))
+                
         
         self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
 
@@ -160,6 +181,12 @@ class UserInterface():
     def NewBoard(self):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount)] for y in range(self.gameState.cellCount)]
 
+    def renderBoard(self):
+        pygame.draw.rect(self.window,(50,50,50),self.boardRect)
+        for x in range(0,int(self.gameState.boardSize.y)+1,int(self.gameState.cellSize.x)):
+            pygame.draw.line(self.window, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
+            pygame.draw.line(self.window, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
+
     def renderTile(self,tile):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
         self.window.blit(self.pictureImage,spritePoint,tile.textureRect)
@@ -167,6 +194,7 @@ class UserInterface():
 
     def render(self):
         self.window.fill((0,0,0))
+        self.renderBoard()
 
         for row in self.gameState.board:
             for tile in row:
