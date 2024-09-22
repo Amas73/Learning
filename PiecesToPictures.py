@@ -5,6 +5,10 @@ import random
 from copy import copy
 from math import copysign
 
+def vectorInt(vector: Vector2) -> Vector2:
+    return Vector2(int(vector.x), int(vector.y))
+
+
 class Tile():
     def __init__(self,grid,rect,position,status,points=0,speed=0.3):
         self.textureGrid = grid
@@ -15,12 +19,14 @@ class Tile():
         self.points = points
         self.speed = speed
         self.moveVector = Vector2(0,0)
-    def findEndPosition(self,vector,state):
+    def findEndPosition(self,state):
         newPosition = copy(self.position)
         while True:
             testedPosition = copy(newPosition)
-            newPosition += vector
-            if len(state.board)<=newPosition.x>0 or len(state.board[0])<=newPosition.y>0\
+            newPosition += self.moveVector
+            if newPosition == Vector2(0,0)\
+                or newPosition.x<0 or newPosition.x>=len(state.board)\
+                or newPosition.y<0 or newPosition.y>=len(state.board[0])\
                 or state.board[int(newPosition.x)][(int(newPosition.y))] !=0:
                 break
         self.endPosition = testedPosition
@@ -31,7 +37,7 @@ class MoveTile():
         self.tile.position += (self.tile.moveVector * self.tile.speed)
         self.state = state
     def run(self):
-        if Vector2(int(self.tile.position.x),int(self.tile.position.y)) == self.tile.endPosition:
+        if vectorInt(self.tile.position) == self.tile.endPosition:
             self.tile.position = copy(self.tile.endPosition)
             self.state.board[int(self.tile.position.x)][int(self.tile.position.y)] = self.tile
             self.tile.status = 'board'
@@ -42,11 +48,9 @@ class NewTile():
     def run(self):
         if len(self.state.queue)>0 and self.state.board[1][0] == 0:
             tile = self.state.queue.pop(0)
-            self.state.board[0][0] = tile
             tile.moveVector = Vector2(1,0)
             tile.status = 'inflight'
-            tile.findEndPosition(Vector2(1,0),self.state)
-            #self.state.board[int(tile.position.x)][int(tile.position.y)] = tile
+            tile.findEndPosition(self.state)
             self.state.inFlightTiles.append(tile)
 
 class RemoveNonInflightTiles():
@@ -82,10 +86,6 @@ class GameState(GameLevel):
         self.board = []
         self.inFlightTiles = []
 
-def vectorInt(vector: Vector2) -> Vector2:
-    return Vector2(int(vector.x), int(vector.y))
-
-
 class UserInterface():
     def __init__(self):
         pygame.init()
@@ -96,7 +96,7 @@ class UserInterface():
 
         self.windowSize = self.gameState.worldSize
         self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
-        self.boardRect = Rect(self.gameState.boardPosition.x,self.gameState.boardPosition.y,self.gameState.boardSize.x,self.gameState.boardSize.y)
+        self.boardRect = Rect(self.gameState.boardPosition,self.gameState.boardSize)
         
         self.pictureSize = Vector2(self.gameState.level.pictureImage.get_size())
         self.pictureCellRatios = self.gameState.boardSize.elementwise() / self.pictureSize.elementwise()
@@ -107,13 +107,13 @@ class UserInterface():
         self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
         textureRect = Rect(0, 0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
         self.newTileButton = Tile(Vector2(0,0),textureRect,Vector2(0,0),'button',0)
-        self.newTileButtonRect = Rect(self.gameState.boardPosition.x,self.gameState.boardPosition.y,self.gameState.boardPosition.x+self.gameState.cellSize.x,self.gameState.boardPosition.y+self.gameState.cellSize.y)
+        self.newTileButtonRect = Rect(self.gameState.boardPosition,self.gameState.cellSize)
 
         self.NewTileQueue()
         self.NewBoard()
 
         self.commands = []
-        self.mousePosStart = []
+        self.mousePosStart = ()
 
         # Loop properties
         self.clock = pygame.time.Clock()
@@ -131,30 +131,30 @@ class UserInterface():
                 elif event.key == pygame.K_SPACE:
                     self.commands.append(NewTile(self.gameState))
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                mousePos = pygame.mouse.get_pos()
-                if self.boardRect.collidepoint(mousePos):
-                    if self.newTileButtonRect.collidepoint(mousePos):
-                        self.commands.append(NewTile(self.gameState))
-                    else:
-                        mouseVector = vectorInt((Vector2(mousePos[0],mousePos[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
-                        if self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] !=0:
-                            self.mousePosStart = copy(mousePos)
-                            print(mousePos)
+                self.mousePosStart = pygame.mouse.get_pos()
             elif event.type == pygame.MOUSEBUTTONUP:
                 mousePos = pygame.mouse.get_pos()
-                moveX = copysign(1,int(self.mousePosStart[0]-mousePos[0]))
-                moveY = copysign(1,int(self.mousePosStart[1]-mousePos[1]))
-                if moveX > moveY:
-                    moveVector = Vector2(moveX//abs(moveX),0)
-                elif moveY > moveX:
-                    moveVector = Vector2(0,moveY//abs(moveY))
-                else:
-                    moveVector = Vector2(0,0)
-                mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
-                tile = self.gameState.board[mouseVector.x][mouseVector.y]
-                tile.findEndPosition(moveVector,self.gameState)
-                self.commands.append(MoveTile(self.gameState))
-                
+                if self.mousePosStart and self.boardRect.collidepoint(self.mousePosStart):
+                    if self.newTileButtonRect.collidepoint(self.mousePosStart):
+                        self.commands.append(NewTile(self.gameState))
+                    else:
+                        mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
+                        if self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] !=0:
+                            moveX = int(mousePos[0]-self.mousePosStart[0])
+                            moveY = int(mousePos[1]-self.mousePosStart[1])
+                            if abs(moveX) > abs(moveY):
+                                moveVector = Vector2(moveX//abs(moveX),0)
+                            elif abs(moveY) > abs(moveX):
+                                moveVector = Vector2(0,moveY//abs(moveY))
+                            else:
+                                moveVector = Vector2(0,0)
+                            tile = self.gameState.board[int(mouseVector.x)][int(mouseVector.y)]
+                            tile.moveVector = moveVector
+                            tile.status = 'inflight'
+                            tile.findEndPosition(self.gameState)
+                            self.gameState.inFlightTiles.append(tile)
+                            self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
+                    self.mousePosStart = ()
         
         self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
 
@@ -179,7 +179,7 @@ class UserInterface():
         random.shuffle(self.gameState.queue)
 
     def NewBoard(self):
-        self.gameState.board = [[0 for x in range(self.gameState.cellCount)] for y in range(self.gameState.cellCount)]
+        self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
 
     def renderBoard(self):
         pygame.draw.rect(self.window,(50,50,50),self.boardRect)
@@ -200,6 +200,9 @@ class UserInterface():
             for tile in row:
                 if tile != 0:
                     self.renderTile(tile)
+
+        for tile in self.gameState.inFlightTiles:
+            self.renderTile(tile)                    
 
         ### Render the New Tile Button
         self.window.blit(self.newTileButtonImage,self.gameState.boardPosition,self.newTileButton.textureRect)
