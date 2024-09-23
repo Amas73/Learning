@@ -28,6 +28,7 @@ class Tile():
                 or newPosition.x<0 or newPosition.x>=len(state.board)\
                 or newPosition.y<0 or newPosition.y>=len(state.board[0])\
                 or state.board[int(newPosition.x)][(int(newPosition.y))] !=0:
+                state.board[int(testedPosition.x)][(int(testedPosition.y))] = self
                 break
         self.endPosition = testedPosition
     
@@ -39,7 +40,6 @@ class MoveTile():
     def run(self):
         if vectorInt(self.tile.position) == self.tile.endPosition:
             self.tile.position = copy(self.tile.endPosition)
-            self.state.board[int(self.tile.position.x)][int(self.tile.position.y)] = self.tile
             self.tile.status = 'board'
             
 class NewTile():
@@ -60,7 +60,6 @@ class RemoveNonInflightTiles():
         newList = [ item for item in self.itemList if item.status == "inflight" ]
         self.itemList[:] = newList
         
-
 
 class GameLevel():
     def __init__(self):
@@ -150,11 +149,12 @@ class UserInterface():
                                 moveVector = Vector2(0,0)
                             tile = self.gameState.board[int(mouseVector.x)][int(mouseVector.y)]
                             tile.moveVector = moveVector
-                            tile.status = 'inflight'
                             tile.findEndPosition(self.gameState)
-                            self.gameState.inFlightTiles.append(tile)
-                            self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
-                    self.mousePosStart = ()
+                            if tile.position != tile.endPosition:
+                                tile.status = 'inflight'
+                                self.gameState.inFlightTiles.append(tile)
+                                self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
+                    #self.mousePosStart = ()
         
         self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
 
@@ -175,7 +175,7 @@ class UserInterface():
                 position = Vector2(0,0)
                 texturePoint = unit.elementwise()*self.gameState.cellSize + self.pictureOffset
                 textureRect = Rect(int(texturePoint.x), int(texturePoint.y), int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
-                self.gameState.queue.append(Tile(texturePoint,textureRect,position,'queue',10))
+                self.gameState.queue.append(Tile(unit,textureRect,position,'queue',10))
         random.shuffle(self.gameState.queue)
 
     def NewBoard(self):
@@ -209,11 +209,26 @@ class UserInterface():
 
         pygame.display.update()   
 
+    def CheckComplete(self):
+        if len(self.gameState.queue) == 0:
+            complete = True
+            for row in self.gameState.board:
+                for tile in row[1:]:
+                    if tile == 0 or tile.textureGrid != (tile.position + Vector2(0,-1)):
+                        complete = False
+                        break
+        else:
+            complete = False
+        if complete:
+            self.running = False
+
+
     def run(self):
         while self.running:
             self.processInput()
             self.update()
             self.render()
+            self.CheckComplete()
             self.clock.tick(60)
 
 
