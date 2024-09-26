@@ -13,9 +13,11 @@ def vectorInt(vector: Vector2) -> Vector2:
 ###############################################################################
 
 class Tile():
-    def __init__(self,grid,rect,position,status,points=0,speed=0.3):
-        self.textureGrid = grid
-        self.textureRect = rect
+    def __init__(self,state,tile,position,status,points=0,speed=0.3):
+        self.state = state
+        self.textureGrid = tile
+        texturePoint = tile.elementwise()*self.state.cellSize + self.state.pictureOffset
+        self.textureRect = Rect(texturePoint, (int(self.state.cellSize.x),int(self.state.cellSize.y)))
         self.position = position
         self.endPosition = copy(position)
         self.status = status
@@ -39,7 +41,8 @@ class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Harder': [6,100], 'Hardest': [7,85]}
         self.gameDifficulty = 'Normal'
-        self.pictureImage = pygame.image.load("avengers.jpg") 
+        self.pictureImage = pygame.image.load("avengers.jpg")
+        #random.seed(22)
 
 class ThemeGraphics():
     def __init__(self):
@@ -53,6 +56,12 @@ class GameState(GameLevel):
         self.worldSize = Vector2(700,1024)
         self.boardSize = Vector2(self.cellSize.x*self.cellCount,self.cellSize.y*(self.cellCount+1))
         self.boardPosition = Vector2(80,200)
+        self.pictureSize = Vector2(self.level.pictureImage.get_size())
+        self.pictureCellRatios = self.boardSize.elementwise() / self.pictureSize.elementwise()
+        self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
+        self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
+        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
+        
         self.queue = []
         self.board = []
         self.inFlightTiles = []
@@ -130,15 +139,9 @@ class UserInterface():
         self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
         self.boardRect = Rect(self.gameState.boardPosition,self.gameState.boardSize)
         
-        self.pictureSize = Vector2(self.gameState.level.pictureImage.get_size())
-        self.pictureCellRatios = self.gameState.boardSize.elementwise() / self.pictureSize.elementwise()
-        self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
-        self.pictureImage = pygame.transform.smoothscale(self.gameState.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
-        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.gameState.cellSize.elementwise()*self.gameState.cellCount)).elementwise()//2
-        
         self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
-        textureRect = Rect(0, 0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
-        self.newTileButton = Tile(Vector2(0,0),textureRect,Vector2(0,0),'button',0)
+        self.newTileButton = Tile(self.gameState,Vector2(0,0),Vector2(0,0),'button',0,0)
+        self.newTileButton.textureRect = Rect(0,0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
         self.newTileButtonRect = Rect(self.gameState.boardPosition,self.gameState.cellSize)
 
         self.NewTileQueue()
@@ -209,9 +212,7 @@ class UserInterface():
             for y in range(self.gameState.cellCount):
                 unit = Vector2(x,y)
                 position = Vector2(0,0)
-                texturePoint = unit.elementwise()*self.gameState.cellSize + self.pictureOffset
-                textureRect = Rect(int(texturePoint.x), int(texturePoint.y), int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
-                self.gameState.queue.append(Tile(unit,textureRect,position,'queue',10))
+                self.gameState.queue.append(Tile(self.gameState,unit,position,'queue',10))
         random.shuffle(self.gameState.queue)
 
     def NewBoard(self):
@@ -230,7 +231,7 @@ class UserInterface():
 
     def renderTile(self,tile):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
-        self.window.blit(self.pictureImage,spritePoint,tile.textureRect)
+        self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
 
 
     def render(self):
