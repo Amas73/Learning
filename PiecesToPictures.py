@@ -1,8 +1,10 @@
+import os
 import pygame
 from pygame import Rect
 from pygame.math import Vector2
 import random
 from copy import copy
+from pprint import pprint
 
 def vectorInt(vector: Vector2) -> Vector2:
     return Vector2(int(vector.x), int(vector.y))
@@ -39,7 +41,7 @@ class Tile():
 
 class GameLevel():
     def __init__(self):
-        self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Harder': [6,100], 'Hardest': [7,85]}
+        self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Hard': [6,100], 'Hardest': [7,85]}
         self.gameDifficulty = 'Normal'
         self.pictureImage = pygame.image.load("avengers.jpg")
         #random.seed(22)
@@ -56,6 +58,7 @@ class GameState(GameLevel):
         self.worldSize = Vector2(700,1024)
         self.boardSize = Vector2(self.cellSize.x*self.cellCount,self.cellSize.y*(self.cellCount+1))
         self.boardPosition = Vector2(80,200)
+        self.boardRect = Rect(self.boardPosition,self.boardSize)
         self.pictureSize = Vector2(self.level.pictureImage.get_size())
         self.pictureCellRatios = self.boardSize.elementwise() / self.pictureSize.elementwise()
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
@@ -102,7 +105,6 @@ class MoveTile(Command):
         if complete:
             self.state.status = 'level complete'
 
-         
 class NewTile(Command):
     def __init__(self,state):
         self.state = state
@@ -121,102 +123,27 @@ class RemoveNonInflightTiles(Command):
         newList = [ item for item in self.itemList if item.status == "inflight" ]
         self.itemList[:] = newList
         
-
-
-###############################################################################
-#                             User Interface                                  #
-###############################################################################
-
-class UserInterface():
-    def __init__(self):
-        pygame.init()
+class LoadLevelCommand(Command):
+    def __init__(self,gameMode,action):
+        self.gameMode = gameMode
+        self.action = action
+    def run(self):
+        # Load game
+        print("I'm here.")
+        if self.action == "load":
+            if os.path.exists("_saveGame.json"):
+                loadSave = load(self.action)
+            else:
+                raise RuntimeError("No file {}".format(self.fileName))
         
-        # Game state
-        self.gameState = GameState()
-        self.theme = ThemeGraphics()
-
-        self.windowSize = self.gameState.worldSize
-        self.window = pygame.display.set_mode((int(self.windowSize.x),int(self.windowSize.y)))
-        self.boardRect = Rect(self.gameState.boardPosition,self.gameState.boardSize)
+        state = self.gameMode.gameState
         
-        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
-        self.newTileButton = Tile(self.gameState,Vector2(0,0),Vector2(0,0),'button',0,0)
-        self.newTileButton.textureRect = Rect(0,0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
-        self.newTileButtonRect = Rect(self.gameState.boardPosition,self.gameState.cellSize)
-
-        self.NewTileQueue()
-        self.NewBoard()
-
-        self.commands = []
-        self.mousePosStart = ()
-
-        # Loop properties
-        self.clock = pygame.time.Clock()
-        self.running = True
-
-    def orthagonalVector(self,mouseStartPos,mouseEndPos):
-        moveX = int(mouseEndPos[0]-mouseStartPos[0])
-        moveY = int(mouseEndPos[1]-mouseStartPos[1])
-        if abs(moveX) > abs(moveY):
-            return Vector2(moveX//abs(moveX),0)
-        elif abs(moveY) > abs(moveX):
-            return Vector2(0,moveY//abs(moveY))
-        else:
-            return Vector2(0,0)
-
-    def processInput(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-                break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                    break
-                elif event.key == pygame.K_SPACE:
-                    self.commands.append(NewTile(self.gameState))
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                self.mousePosStart = pygame.mouse.get_pos()
-            elif event.type == pygame.MOUSEBUTTONUP:
-                mousePos = pygame.mouse.get_pos()
-                if self.mousePosStart and self.boardRect.collidepoint(self.mousePosStart):
-                    if self.newTileButtonRect.collidepoint(self.mousePosStart):
-                        self.commands.append(NewTile(self.gameState))
-                    else:
-                        mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
-                        if self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] !=0:
-                            moveVector = self.orthagonalVector(self.mousePosStart,mousePos)
-                            tile = self.gameState.board[int(mouseVector.x)][int(mouseVector.y)]
-                            tile.moveVector = moveVector
-                            tile.findEndPosition(self.gameState)
-                            if tile.position != tile.endPosition:
-                                tile.status = 'inflight'
-                                self.gameState.inFlightTiles.append(tile)
-                                self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
-                    
-        self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
-
-        for tile in self.gameState.inFlightTiles:
-            if tile.status == 'inflight':
-                self.commands.append(MoveTile(tile,self.gameState))
+        # Window
+        windowSize = state.worldSize.elementwise() * cellSize
+        self.gameMode.ui.window = pygame.display.set_mode((int(windowSize.x),int(windowSize.y)))
         
-    def update(self):
-        for command in self.commands:
-            command.run()
-        self.commands.clear()
-        if self.gameState.status == 'level complete':
-            self.running = False
-    
-    def NewTileQueue(self):
-        for x in range(self.gameState.cellCount):
-            for y in range(self.gameState.cellCount):
-                unit = Vector2(x,y)
-                position = Vector2(0,0)
-                self.gameState.queue.append(Tile(self.gameState,unit,position,'queue',10))
-        random.shuffle(self.gameState.queue)
-
-    def NewBoard(self):
-        self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
+        # Resume game
+        self.gameMode.gameOver = False
 
 
 ###############################################################################
@@ -303,37 +230,61 @@ class MenuGameMode(GameMode):
         self.ui = ui
         
         # Font
-        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 72)
-        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 24)
         
         # Menu items
+        # self.menuItems = [
+        #     {
+        #         'title': 'Resume game',
+        #         'action': lambda: self.ui.loadLevel("load")
+        #     },
+        #     {
+        #         'title': 'New Game',
+        #         'action': lambda: self.ui.loadLevel("new")
+        #     },
+        #     {
+        #         'title': 'Settings',
+        #         'action': lambda: self.ui.loadLevel("settings")
+        #     },
+        #     {
+        #         'title': 'Quit',
+        #         'action': lambda: self.ui.quitGame()
+        #     }
+        # ]      
+         
         self.menuItems = [
             {
-                'title': 'Level 1',
-                'action': lambda: self.ui.loadLevel("level1.tmx")
+                'title': 'Easy',
+                'action': lambda: self.ui.loadLevel("new")
             },
             {
-                'title': 'Level 2',
-                'action': lambda: self.ui.loadLevel("level2.tmx")
+                'title': 'Normal',
+                'action': lambda: self.ui.loadLevel("new")
             },
             {
-                'title': 'Level 3',
-                'action': lambda: self.ui.loadLevel("level3.tmx")
+                'title': 'Hard',
+                'action': lambda: self.ui.loadLevel("new")
             },
             {
-                'title': 'Quit',
+                'title': 'Hardest',
+                'action': lambda: self.ui.loadLevel("new")
+            },
+            {
+                'title': 'Back',
                 'action': lambda: self.ui.quitGame()
             }
-        ]        
+        ]          
 
         # Compute menu width
         self.menuWidth = 0
         for item in self.menuItems:
             surface = self.itemFont.render(item['title'], True, (200, 0, 0))
+            
             self.menuWidth = max(self.menuWidth, surface.get_width())
             item['surface'] = surface        
         
-        self.currentMenuItem = 0
+        self.currentMenuItem = 1
         self.menuCursor = pygame.image.load("cursor.png")        
 
     def processInput(self):
@@ -362,13 +313,13 @@ class MenuGameMode(GameMode):
         
     def render(self, window):
         # Initial y
-        y = 50
+        y = 150
         
         # Title
         surface = self.titleFont.render("Pieces to Pictures", True, (200, 0, 0))
         x = (window.get_width() - surface.get_width()) // 2
         window.blit(surface, (x, y))
-        y += (200 * surface.get_height()) // 100
+        y += 4 * surface.get_height()
         
         # Draw menu items
         x = (window.get_width() - self.menuWidth) // 2
@@ -383,12 +334,176 @@ class MenuGameMode(GameMode):
                 cursorY = y + (surface.get_height() - self.menuCursor.get_height()) // 2
                 window.blit(self.menuCursor, (cursorX, cursorY))
             
-            y += (120 * surface.get_height()) // 100           
+            y += (220 * surface.get_height()) // 100           
             
 
 class PlayGameMode(GameMode):
     def __init__(self, ui):
-        pass
+        self.ui = ui
+
+        # Game state
+        self.gameState = GameState()
+        self.theme = ThemeGraphics()
+
+        
+        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
+        self.newTileButton = Tile(self.gameState,Vector2(0,0),Vector2(0,0),'button',0,0)
+        self.newTileButton.textureRect = Rect(0,0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
+        self.newTileButtonRect = Rect(self.gameState.boardPosition,self.gameState.cellSize)
+
+        self.NewTileQueue()
+        self.NewBoard()
+
+        self.commands = []
+        self.mousePosStart = ()
+
+        # Loop properties
+        self.clock = pygame.time.Clock()
+        self.running = True
+
+    def orthagonalVector(self,mouseStartPos,mouseEndPos):
+        moveX = int(mouseEndPos[0]-mouseStartPos[0])
+        moveY = int(mouseEndPos[1]-mouseStartPos[1])
+        if abs(moveX) > abs(moveY):
+            return Vector2(moveX//abs(moveX),0)
+        elif abs(moveY) > abs(moveX):
+            return Vector2(0,moveY//abs(moveY))
+        else:
+            return Vector2(0,0)
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running = False
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                    break
+                elif event.key == pygame.K_SPACE:
+                    self.commands.append(NewTile(self.gameState))
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                self.mousePosStart = pygame.mouse.get_pos()
+            elif event.type == pygame.MOUSEBUTTONUP:
+                mousePos = pygame.mouse.get_pos()
+                if self.mousePosStart and self.boardRect.collidepoint(self.mousePosStart):
+                    if self.newTileButtonRect.collidepoint(self.mousePosStart):
+                        self.commands.append(NewTile(self.gameState))
+                    else:
+                        mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
+                        if self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] !=0:
+                            moveVector = self.orthagonalVector(self.mousePosStart,mousePos)
+                            tile = self.gameState.board[int(mouseVector.x)][int(mouseVector.y)]
+                            tile.moveVector = moveVector
+                            tile.findEndPosition(self.gameState)
+                            if tile.position != tile.endPosition:
+                                tile.status = 'inflight'
+                                self.gameState.inFlightTiles.append(tile)
+                                self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
+                    
+        self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
+
+        for tile in self.gameState.inFlightTiles:
+            if tile.status == 'inflight':
+                self.commands.append(MoveTile(tile,self.gameState))
+        
+    def update(self):
+        for command in self.commands:
+            command.run()
+        self.commands.clear()
+        if self.gameState.status == 'level complete':
+            self.running = False
+    
+    def NewTileQueue(self):
+        for x in range(self.gameState.cellCount):
+            for y in range(self.gameState.cellCount):
+                unit = Vector2(x,y)
+                position = Vector2(0,0)
+                self.gameState.queue.append(Tile(self.gameState,unit,position,'queue',10))
+        random.shuffle(self.gameState.queue)
+
+    def NewBoard(self):
+        self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
+
+
+###############################################################################
+#                             User Interface                                  #
+###############################################################################
+
+class UserInterface():
+    def __init__(self):
+        # Window
+        pygame.init()
+        self.window = pygame.display.set_mode((700,1024))
+        pygame.display.set_caption("Pieces to Pictures")
+        pygame.display.set_icon(pygame.image.load("icon.png"))
+        
+        # Modes
+        self.playGameMode = None
+        self.overlayGameMode = MenuGameMode(self)
+        self.currentActiveMode = 'Overlay'
+        
+        # Loop properties
+        self.clock = pygame.time.Clock()
+        self.running = True        
+        
+    def loadLevel(self, action):
+        if self.playGameMode is None:
+            self.playGameMode = PlayGameMode(self)
+        self.playGameMode.commands.append(LoadLevelCommand(self.playGameMode,action))
+        try:
+            self.playGameMode.update()
+            self.currentActiveMode = 'Play'
+        except Exception as ex:
+            print(ex)
+            self.playGameMode = None
+            self.showMessage("Level loading failed :-(")
+        
+    def showGame(self):
+        if self.playGameMode is not None:
+            self.currentActiveMode = 'Play'
+
+    def showMenu(self):
+        self.overlayGameMode = MenuGameMode(self)
+        self.currentActiveMode = 'Overlay'
+        
+    def showMessage(self, message):
+        self.overlayGameMode = MessageGameMode(self, message)
+        self.currentActiveMode = 'Overlay'
+        
+    def quitGame(self):
+        self.running = False
+       
+    def run(self):
+        while self.running:
+            # Inputs and updates are exclusives
+            if self.currentActiveMode == 'Overlay':
+                self.overlayGameMode.processInput()
+                self.overlayGameMode.update()
+            elif self.playGameMode is not None:
+                self.playGameMode.processInput()
+                try:
+                    self.playGameMode.update()
+                except Exception as ex:
+                    print(ex)
+                    self.playGameMode = None
+                    self.showMessage("Error during the game update...")
+                    
+            # Render game (if any), and then the overlay (if active)
+            if self.playGameMode is not None:
+                self.playGameMode.render(self.window)
+            else:
+                self.window.fill((0,0,0))
+            if self.currentActiveMode == 'Overlay':
+                darkSurface = pygame.Surface(self.window.get_size(),flags=pygame.SRCALPHA)
+                pygame.draw.rect(darkSurface, (0,0,0,150), darkSurface.get_rect())
+                self.window.blit(darkSurface, (0,0))
+                self.overlayGameMode.render(self.window)
+                
+            # Update display
+            pygame.display.update()    
+            self.clock.tick(60)
+
 
 
 ui = UserInterface()
