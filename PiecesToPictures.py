@@ -149,22 +149,61 @@ class LoadLevelCommand(Command):
 #                                Rendering                                    #
 ###############################################################################
 
-class GameLayer():  
-    def __init__(self,surface):
-        self.window = surface      
+class Layer():
+    def __init__(self,cellSize,imageFile):
+        self.cellSize = cellSize
+        self.texture = pygame.image.load(imageFile)
+        
+    def setTileset(self,cellSize,imageFile):
+        self.cellSize = cellSize
+        self.texture = pygame.image.load(imageFile)
+        
+    @property
+    def cellWidth(self):
+        return int(self.cellSize.x)
+
+    @property
+    def cellHeight(self):
+        return int(self.cellSize.y)        
+    
+    def renderTile(self,surface,tile):
+        spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
+        self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
+
+    def render(self,surface):
+        raise NotImplementedError() 
+
+class BoardLayer(Layer):  
+    def __init__(self,ui,imageFile,gameState,array,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui,imageFile)
+        super().__init__(ui,imageFile)
+        self.gameState = gameState
+        self.array = array
+        self.surface = None
+        self.surfaceFlags = surfaceFlags     
+    
     def renderBoard(self):
         pygame.draw.rect(self.window,(50,50,50),self.boardRect)
         for x in range(0,int(self.gameState.boardSize.y)+1,int(self.gameState.cellSize.x)):
             pygame.draw.line(self, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
             pygame.draw.line(self, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
 
-    def renderTile(self,tile):
-        spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
-        self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
-
+    def setTileset(self,cellSize,imageFile):
+        super().setTileset(cellSize,imageFile)
+        self.surface = None
+        
+    def render(self,surface):
+        if self.surface is None:
+            self.surface = pygame.Surface(surface.get_size(),flags=self.surfaceFlags)
+            for y in range(self.gameState.worldHeight):
+                for x in range(self.gameState.worldWidth):
+                    tile = self.array[y][x]
+                    if not tile is None:
+                        self.renderTile(self.surface,Vector2(x,y),tile)
+        surface.blit(self.surface,(0,0))
+        
     def render(self):
-        self.fill((0,0,0))
-        GameLayer.renderBoard(self)
+        self.renderBoard()
 
         for row in self.gameState.board:
             for tile in row:
