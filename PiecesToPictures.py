@@ -129,7 +129,6 @@ class LoadLevelCommand(Command):
         self.action = action
     def run(self):
         # Load game
-        print("I'm here.")
         if self.action == "load":
             if os.path.exists("_saveGame.json"):
                 loadSave = load(self.action)
@@ -139,7 +138,7 @@ class LoadLevelCommand(Command):
         state = self.gameMode.gameState
         
         # Window
-        windowSize = state.worldSize.elementwise() * cellSize
+        windowSize = state.worldSize
         self.gameMode.ui.window = pygame.display.set_mode((int(windowSize.x),int(windowSize.y)))
         
         # Resume game
@@ -149,21 +148,23 @@ class LoadLevelCommand(Command):
 ###############################################################################
 #                                Rendering                                    #
 ###############################################################################
-        
+
+class GameLayer():  
+    def __init__(self,surface):
+        self.window = surface      
     def renderBoard(self):
         pygame.draw.rect(self.window,(50,50,50),self.boardRect)
         for x in range(0,int(self.gameState.boardSize.y)+1,int(self.gameState.cellSize.x)):
-            pygame.draw.line(self.window, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
-            pygame.draw.line(self.window, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
+            pygame.draw.line(self, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
+            pygame.draw.line(self, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
 
     def renderTile(self,tile):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
         self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
 
-
     def render(self):
-        self.window.fill((0,0,0))
-        self.renderBoard()
+        self.fill((0,0,0))
+        GameLayer.renderBoard(self)
 
         for row in self.gameState.board:
             for tile in row:
@@ -344,7 +345,7 @@ class PlayGameMode(GameMode):
         # Game state
         self.gameState = GameState()
         self.theme = ThemeGraphics()
-
+        self.render
         
         self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
         self.newTileButton = Tile(self.gameState,Vector2(0,0),Vector2(0,0),'button',0,0)
@@ -424,6 +425,9 @@ class PlayGameMode(GameMode):
 
     def NewBoard(self):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
+
+    def render(self,surface):
+        GameLayer.render(surface)
 
 
 ###############################################################################
