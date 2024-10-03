@@ -49,6 +49,7 @@ class GameLevel():
 class ThemeGraphics():
     def __init__(self):
         self.newTileButtonTexture = pygame.image.load("Arrow.jpg")
+        self.frameTexture = pygame.image.load("avengers.jpg")
 
 class GameState(GameLevel):
     def __init__(self):
@@ -67,7 +68,9 @@ class GameState(GameLevel):
         
         self.queue = []
         self.board = []
+        self.frame = []
         self.inFlightTiles = []
+        self.animatedTiles = []
         self.status = 'in game'
 
 
@@ -166,20 +169,17 @@ class Layer():
     def cellHeight(self):
         return int(self.cellSize.y)        
     
-    def renderTile(self,surface,tile):
+    def renderTile(self,window,tile):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
         self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
 
-    def render(self,surface):
+    def render(self,window):
         raise NotImplementedError() 
 
-class BoardLayer(Layer):  
-    def __init__(self,ui,imageFile,gameState,array,surfaceFlags=pygame.SRCALPHA):
-        super().__init__(ui,imageFile)
+class BackgroundLayer(Layer):           ##### Includes the boardframe as part of the theme
+    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
-        self.array = array
-        self.surface = None
         self.surfaceFlags = surfaceFlags     
     
     def renderBoard(self):
@@ -188,43 +188,46 @@ class BoardLayer(Layer):
             pygame.draw.line(self, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
             pygame.draw.line(self, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
 
-    def setTileset(self,cellSize,imageFile):
-        super().setTileset(cellSize,imageFile)
-        self.surface = None
-        
-    def render(self,surface):
-        if self.surface is None:
-            self.surface = pygame.Surface(surface.get_size(),flags=self.surfaceFlags)
-            for y in range(self.gameState.worldHeight):
-                for x in range(self.gameState.worldWidth):
-                    tile = self.array[y][x]
-                    if not tile is None:
-                        self.renderTile(self.surface,Vector2(x,y),tile)
-        surface.blit(self.surface,(0,0))
-        
-    def render(self):
-        self.renderBoard()
-
+class BoardLayer(Layer):  
+    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui,imageFile)
+        self.gameState = gameState
+        self.surfaceFlags = surfaceFlags     
+    
+    def render(self,window):
         for row in self.gameState.board:
             for tile in row:
                 if tile != 0:
                     self.renderTile(tile)
 
+class InFlightLayer(Layer):  
+    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui,imageFile)
+        self.gameState = gameState
+        self.surfaceFlags = surfaceFlags     
+    
+    def render(self,window):
         for tile in self.gameState.inFlightTiles:
             self.renderTile(tile)                    
 
-        ### Render the New Tile Button
+class AnimationLayer(Layer):  
+    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui,imageFile)
+        self.gameState = gameState
+        self.surfaceFlags = surfaceFlags     
+    
+    def render(self,window):
+        for tile in self.gameState.animatedTiles:
+            self.renderTile(tile)                    
+
+class ForegroundLayer(Layer):  
+    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui,imageFile)
+        self.gameState = gameState
+        self.surfaceFlags = surfaceFlags     
+    
+    def render(self,window):
         self.window.blit(self.newTileButtonImage,self.gameState.boardPosition,self.newTileButton.textureRect)
-
-        pygame.display.update()   
-
-    def run(self):
-        while self.running:
-            self.processInput()
-            self.update()
-            self.render()
-            #self.CheckComplete()
-            self.clock.tick(60)
 
 
 ###############################################################################
@@ -384,6 +387,13 @@ class PlayGameMode(GameMode):
         # Game state
         self.gameState = GameState()
         self.theme = ThemeGraphics()
+
+        self.layers = [
+            BackgroundLayer(self.gameState.cellSize,self.theme.frameTexture,self.gameState,self.gameState.frame,0),
+            BoardLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.board,0),
+            InFlightLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.inFlightTiles,0),
+            ForegroundLayer(self.gameState.cellSize,self.theme.newTileButtonTexture,self.gameState,[],0)
+        ]
         self.render
         
         self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
@@ -465,8 +475,9 @@ class PlayGameMode(GameMode):
     def NewBoard(self):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
 
-    def render(self,surface):
-        GameLayer.render(surface)
+    def render(self,window):
+        for layer in self.layers:
+            layer.render(window)
 
 
 ###############################################################################
