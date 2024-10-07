@@ -51,7 +51,6 @@ class Piece(Tile):
 class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
-        self.gameDifficulty = 'Normal'
         self.pictureImage = pygame.image.load("avengers.jpg")
         #random.seed(22)
 
@@ -72,9 +71,9 @@ class ThemeGraphics():
 class GameState(GameLevel):
     def __init__(self):
         self.level = GameLevel()
-        self.cellCount = self.level.difficulties[self.level.gameDifficulty]
+        self.cellCount = self.level.difficulties[ui.difficulty]
         self.worldSize = Vector2(840,1050)
-        size = int(self.worldSize.x/(self.level.difficulties[self.level.gameDifficulty]+2))
+        size = int(self.worldSize.x/(self.cellCount+2))
         self.cellSize = Vector2(size,size)
         self.boardSize = Vector2(self.cellSize.x*self.cellCount,self.cellSize.y*(self.cellCount+1))
         self.boardPosition = Vector2(1.5*self.cellSize,2.5*self.cellSize)
@@ -153,13 +152,6 @@ class RemoveNonInflightTiles(Command):
         newList = [ item for item in self.itemList if item.status == "inflight" ]
         self.itemList[:] = newList
 
-class gameDifficulty(Command):
-    def __init__(self,state,action):
-        self.state = state
-        self.action = action
-    def run(self):
-        self.state.level.gameDifficulty=self.action   
-    
 class LoadLevelCommand(Command):
     def __init__(self,gameMode,action):
         self.gameMode = gameMode
@@ -357,19 +349,19 @@ class MenuGameMode(GameMode):
         self.menuItems = [
             {
                 'title': 'Easy',
-                'action': lambda: self.ui.gameDifficulty('Easy')
+                'action': lambda: self.ui.loadLevel('Easy')
             },
             {
                 'title': 'Normal',
-                'action': lambda: self.ui.gameDifficulty('Normal')
+                'action': lambda: self.ui.loadLevel('Normal')
             },
             {
                 'title': 'Hard',
-                'action': lambda: self.ui.gameDifficulty('Hard')
+                'action': lambda: self.ui.loadLevel('Hard')
             },
             {
                 'title': 'Hardest',
-                'action': lambda: self.ui.gameDifficulty('Hardest')
+                'action': lambda: self.ui.loadLevel('Hardest')
             },
             {
                 'title': 'Back',
@@ -595,27 +587,17 @@ class UserInterface():
         self.playGameMode = None
         self.overlayGameMode = MenuGameMode(self)
         self.currentActiveMode = 'Overlay'
+        self.difficulty = 'Normal'
         
         # Loop properties
         self.clock = pygame.time.Clock()
         self.running = True     
 
-    def gameDifficulty(self,level):
-        if self.playGameMode is None:
-            self.playGameMode = PlayGameMode(self)
-        self.playGameMode.commands.append(gameDifficulty(self.playGameMode,level))
-        try:
-            self.playGameMode.update()
-            self.currentActiveMode = 'Play'
-        except Exception as ex:
-            print(ex)
-            self.playGameMode = None
-            self.showMessage("Level loading failed :-(")
-        
     def loadLevel(self, action):
+        self.difficulty = action
         if self.playGameMode is None:
             self.playGameMode = PlayGameMode(self)
-        self.playGameMode.commands.append(LoadLevelCommand(self.playGameMode,action))
+        #self.playGameMode.commands.append(LoadLevelCommand(self.playGameMode,action))
         try:
             self.playGameMode.update()
             self.currentActiveMode = 'Play'
