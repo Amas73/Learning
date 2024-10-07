@@ -2,9 +2,9 @@ import os
 import pygame
 from pygame import Rect
 from pygame.math import Vector2
+from pygame import surfarray
 import random
 from copy import copy
-from pprint import pprint
 
 def vectorInt(vector: Vector2) -> Vector2:
     return Vector2(int(vector.x), int(vector.y))
@@ -15,16 +15,25 @@ def vectorInt(vector: Vector2) -> Vector2:
 ###############################################################################
 
 class Tile():
-    def __init__(self,state,tile,position,status,points=0,speed=0.3):
+    def __init__(self,state,tile,position):
         self.state = state
         self.textureGrid = tile
-        texturePoint = tile.elementwise()*self.state.cellSize + self.state.pictureOffset
-        self.textureRect = Rect(texturePoint, (int(self.state.cellSize.x),int(self.state.cellSize.y)))
         self.position = position
+
+class AnimatedTile(Tile):
+    def __init__(self,state,tile,position,maxFrame,animateSpeed=0.2):
+        super().__init__(state,tile,position)
+        self.maxFrame = maxFrame
+        self.frame = 0
+        self.animationSpeed = animateSpeed
+
+class Piece(Tile):
+    def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3):
+        super().__init__(state,tile,position)
         self.endPosition = copy(position)
         self.status = status
         self.points = points
-        self.speed = speed
+        self.speed = moveSpeed
         self.moveVector = Vector2(0,0)
     def findEndPosition(self,state):
         newPosition = copy(self.position)
@@ -41,34 +50,52 @@ class Tile():
 
 class GameLevel():
     def __init__(self):
-        self.difficulties = {'Easy': [4,150], 'Normal': [5,120], 'Hard': [6,100], 'Hardest': [7,85]}
+        self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
         self.gameDifficulty = 'Normal'
         self.pictureImage = pygame.image.load("avengers.jpg")
         #random.seed(22)
 
 class ThemeGraphics():
-    def __init__(self):
-        self.newTileButtonTexture = pygame.image.load("Arrow.jpg")
-        self.frameTexture = pygame.image.load("avengers.jpg")
-
+    def __init__(self,cellSize):
+        ### Theme image must be 420 pixels height. 3 rows 140 pixels high each:
+        #       First row is the 8 (140x140px) tiles of the frame
+        #           - one tile for each side & one tile for each corner.
+        #       Second row is the "new tile button" image. Must be 140 x 140 pixels.
+        #           - can be animated with each frame going across
+        #       Third row is for the sliding door animation. Each column across is a frame.
+        ###################################################################################
+        self.themeTexture = pygame.image.load("frame.png")
+        imageSize = Vector2(self.themeTexture.get_size())
+        newSize =  imageSize / 140 * cellSize.elementwise()
+        self.themeImage = pygame.transform.smoothscale(self.themeTexture, newSize)
+        
 class GameState(GameLevel):
     def __init__(self):
         self.level = GameLevel()
-        self.cellCount = self.level.difficulties[self.level.gameDifficulty][0]
-        self.cellSize = Vector2(self.level.difficulties[self.level.gameDifficulty][1],self.level.difficulties[self.level.gameDifficulty][1])
-        self.worldSize = Vector2(700,1024)
+        self.cellCount = self.level.difficulties[self.level.gameDifficulty]
+        self.worldSize = Vector2(840,1050)
+        size = int(self.worldSize.x/(self.level.difficulties[self.level.gameDifficulty]+2))
+        self.cellSize = Vector2(size,size)
         self.boardSize = Vector2(self.cellSize.x*self.cellCount,self.cellSize.y*(self.cellCount+1))
-        self.boardPosition = Vector2(80,200)
+        self.boardPosition = Vector2(1.5*self.cellSize,2.5*self.cellSize)
         self.boardRect = Rect(self.boardPosition,self.boardSize)
         self.pictureSize = Vector2(self.level.pictureImage.get_size())
         self.pictureCellRatios = self.boardSize.elementwise() / self.pictureSize.elementwise()
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
-        self.pictureImage = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
-        self.pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
+        self.pictureScaled = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
+        pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
+        offsetRect = Rect(int(pictureOffset.x), int(pictureOffset.y), self.cellSize.x*5, self.cellSize.y*5)
+        self.pictureImage = self.pictureScaled.subsurface(offsetRect)
+        
+        self.theme = ThemeGraphics(self.cellSize)
+        self.themeImage = self.theme.themeImage
+        self.newTileButtonRect = Rect(self.boardPosition,self.cellSize)
         
         self.queue = []
         self.board = []
         self.frame = []
+        self.newTileButton = []
+        self.slidingDoor = []
         self.inFlightTiles = []
         self.animatedTiles = []
         self.status = 'in game'
@@ -125,18 +152,20 @@ class RemoveNonInflightTiles(Command):
     def run(self):
         newList = [ item for item in self.itemList if item.status == "inflight" ]
         self.itemList[:] = newList
-        
+
+class gameDifficulty(Command):
+    def __init__(self,state,action):
+        self.state = state
+        self.action = action
+    def run(self):
+        self.state.level.gameDifficulty=self.action   
+    
 class LoadLevelCommand(Command):
     def __init__(self,gameMode,action):
         self.gameMode = gameMode
         self.action = action
     def run(self):
         # Load game
-        if self.action == "load":
-            if os.path.exists("_saveGame.json"):
-                loadSave = load(self.action)
-            else:
-                raise RuntimeError("No file {}".format(self.fileName))
         
         state = self.gameMode.gameState
         
@@ -155,11 +184,11 @@ class LoadLevelCommand(Command):
 class Layer():
     def __init__(self,cellSize,imageFile):
         self.cellSize = cellSize
-        self.texture = pygame.image.load(imageFile)
+        self.texture = imageFile
         
     def setTileset(self,cellSize,imageFile):
         self.cellSize = cellSize
-        self.texture = pygame.image.load(imageFile)
+        self.texture = imageFile
         
     @property
     def cellWidth(self):
@@ -169,27 +198,53 @@ class Layer():
     def cellHeight(self):
         return int(self.cellSize.y)        
     
-    def renderTile(self,window,tile):
+    def renderTile(self,window,tile,angle=None):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
-        self.window.blit(self.gameState.pictureImage,spritePoint,tile.textureRect)
+        texturePoint = tile.textureGrid.elementwise()*self.cellSize
+        textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
+        window.blit(self.texture,spritePoint,textureRect)
+        
+        if angle is None:
+            window.blit(self.texture,spritePoint,textureRect)
+        else:
+            # Extract the tile in a window
+            textureTile = pygame.Surface((self.cellWidth,self.cellHeight),pygame.SRCALPHA)
+            textureTile.blit(self.texture,(0,0),textureRect)
+            # Rotate the surface with the tile
+            rotatedTile = pygame.transform.rotate(textureTile,angle)
+            # Compute the new coordinate on the screen, knowing that we rotate around the center of the tile
+            spritePoint.x -= (rotatedTile.get_width() - textureTile.get_width()) // 2
+            spritePoint.y -= (rotatedTile.get_height() - textureTile.get_height()) // 2
+            # Render the rotatedTile
+            window.blit(rotatedTile,spritePoint)
 
     def render(self,window):
         raise NotImplementedError() 
 
-class BackgroundLayer(Layer):           ##### Includes the boardframe as part of the theme
-    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+class BackgroundLayer(Layer):
+    def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
-        self.surfaceFlags = surfaceFlags     
+        self.layout = tiles
+        self.surfaceFlags = surfaceFlags
     
-    def renderBoard(self):
-        pygame.draw.rect(self.window,(50,50,50),self.boardRect)
+    def renderBoard(self,window):
+        pygame.draw.rect(window,(50,50,50),self.gameState.boardRect)
         for x in range(0,int(self.gameState.boardSize.y)+1,int(self.gameState.cellSize.x)):
-            pygame.draw.line(self, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
-            pygame.draw.line(self, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
+            pygame.draw.line(window, (70,0,70),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y),(x+self.gameState.boardPosition.x,self.gameState.boardPosition.y+self.gameState.boardSize.y))
+            pygame.draw.line(window, (70,0,70),(self.gameState.boardPosition.x,self.gameState.boardPosition.y+x),(self.gameState.boardPosition.x+self.gameState.boardSize.x,self.gameState.boardPosition.y+x))
+
+    def renderFrame(self,window):
+        for tile in self.layout:
+            ####################### here for the if statement that determines the tile isn't where a Sliding Door will go #########################
+            self.renderTile(window,tile)
+
+    def render(self, window):
+        self.renderBoard(window)
+        self.renderFrame(window)
 
 class BoardLayer(Layer):  
-    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+    def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
         self.surfaceFlags = surfaceFlags     
@@ -198,36 +253,39 @@ class BoardLayer(Layer):
         for row in self.gameState.board:
             for tile in row:
                 if tile != 0:
-                    self.renderTile(tile)
+                    self.renderTile(window,tile)
 
 class InFlightLayer(Layer):  
-    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+    def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
         self.surfaceFlags = surfaceFlags     
     
     def render(self,window):
         for tile in self.gameState.inFlightTiles:
-            self.renderTile(tile)                    
+            self.renderTile(window,tile)                    
 
 class AnimationLayer(Layer):  
-    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+    def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
         self.surfaceFlags = surfaceFlags     
     
     def render(self,window):
         for tile in self.gameState.animatedTiles:
-            self.renderTile(tile)                    
+            self.renderTile(window,tile)                    
 
 class ForegroundLayer(Layer):  
-    def __init__(self,ui,imageFile,gameState,surfaceFlags=pygame.SRCALPHA):
+    def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
-        self.surfaceFlags = surfaceFlags     
+        self.surfaceFlags = surfaceFlags
+        self.foregroundTiles = tiles
     
     def render(self,window):
-        self.window.blit(self.newTileButtonImage,self.gameState.boardPosition,self.newTileButton.textureRect)
+        for tile in self.foregroundTiles:
+            self.renderTile(window,tile)
+            
 
 
 ###############################################################################
@@ -299,19 +357,19 @@ class MenuGameMode(GameMode):
         self.menuItems = [
             {
                 'title': 'Easy',
-                'action': lambda: self.ui.loadLevel("new")
+                'action': lambda: self.ui.gameDifficulty('Easy')
             },
             {
                 'title': 'Normal',
-                'action': lambda: self.ui.loadLevel("new")
+                'action': lambda: self.ui.gameDifficulty('Normal')
             },
             {
                 'title': 'Hard',
-                'action': lambda: self.ui.loadLevel("new")
+                'action': lambda: self.ui.gameDifficulty('Hard')
             },
             {
                 'title': 'Hardest',
-                'action': lambda: self.ui.loadLevel("new")
+                'action': lambda: self.ui.gameDifficulty('Hardest')
             },
             {
                 'title': 'Back',
@@ -376,7 +434,7 @@ class MenuGameMode(GameMode):
                 cursorX = x - self.menuCursor.get_width() - 10
                 cursorY = y + (surface.get_height() - self.menuCursor.get_height()) // 2
                 window.blit(self.menuCursor, (cursorX, cursorY))
-            
+                
             y += (220 * surface.get_height()) // 100           
             
 
@@ -386,24 +444,18 @@ class PlayGameMode(GameMode):
 
         # Game state
         self.gameState = GameState()
-        self.theme = ThemeGraphics()
-
-        self.layers = [
-            BackgroundLayer(self.gameState.cellSize,self.theme.frameTexture,self.gameState,self.gameState.frame,0),
-            BoardLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.board,0),
-            InFlightLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.inFlightTiles,0),
-            ForegroundLayer(self.gameState.cellSize,self.theme.newTileButtonTexture,self.gameState,[],0)
-        ]
-        self.render
         
-        self.newTileButtonImage = pygame.transform.smoothscale(self.theme.newTileButtonTexture, (150*4/self.gameState.cellCount, 150*4/self.gameState.cellCount))
-        self.newTileButton = Tile(self.gameState,Vector2(0,0),Vector2(0,0),'button',0,0)
-        self.newTileButton.textureRect = Rect(0,0, int(self.gameState.cellSize.x),int(self.gameState.cellSize.y))
-        self.newTileButtonRect = Rect(self.gameState.boardPosition,self.gameState.cellSize)
-
+        self.layers = [
+            BackgroundLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.frame),
+            BoardLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.board),
+            InFlightLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.inFlightTiles),
+            ForegroundLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.newTileButton)
+        ]
+        
+        self.NewFrame()
         self.NewTileQueue()
         self.NewBoard()
-
+        
         self.commands = []
         self.mousePosStart = ()
 
@@ -436,8 +488,8 @@ class PlayGameMode(GameMode):
                 self.mousePosStart = pygame.mouse.get_pos()
             elif event.type == pygame.MOUSEBUTTONUP:
                 mousePos = pygame.mouse.get_pos()
-                if self.mousePosStart and self.boardRect.collidepoint(self.mousePosStart):
-                    if self.newTileButtonRect.collidepoint(self.mousePosStart):
+                if self.mousePosStart and self.gameState.boardRect.collidepoint(self.mousePosStart):
+                    if self.gameState.newTileButtonRect.collidepoint(self.mousePosStart):
                         self.commands.append(NewTile(self.gameState))
                     else:
                         mouseVector = vectorInt((Vector2(self.mousePosStart[0],self.mousePosStart[1])-self.gameState.boardPosition) / self.gameState.cellSize.x)
@@ -469,11 +521,58 @@ class PlayGameMode(GameMode):
             for y in range(self.gameState.cellCount):
                 unit = Vector2(x,y)
                 position = Vector2(0,0)
-                self.gameState.queue.append(Tile(self.gameState,unit,position,'queue',10))
+                self.gameState.queue.append(Piece(self.gameState,unit,position,'queue'))
         random.shuffle(self.gameState.queue)
 
     def NewBoard(self):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
+
+    def NewFrame(self):
+        frameArray = [(-1,-1,4),(0,-1,3),(1,-1,3),(2,-1,3),(3,-1,3),(4,-1,3),(5,-1,5),\
+                       (-1,0,2),(5,0,0),\
+                       (-1,1,2),(5,1,0),\
+                       (-1,2,2),(5,2,0),\
+                       (-1,3,2),(5,3,0),\
+                       (-1,4,2),(5,4,0),\
+                       (-1,5,2),(5,5,0),\
+                       (-1,6,7),(0,6,1),(1,6,1),(2,6,1),(3,6,1),(4,6,1),(5,6,6)]
+        for x,y,a in frameArray:
+            self.gameState.frame.append(Tile(self.gameState,Vector2(a,0),Vector2(x,y)))
+        pixel_array = surfarray.array3d(self.gameState.themeImage)
+        width = len(pixel_array)
+        ### Identify how many frames for the New Tile button animation ###
+        x=0
+        cellSize = int(self.gameState.cellSize.x)
+        while True:
+            empty = True
+            if (x*cellSize) < width:
+                for b in range(cellSize):
+                    for a in range(cellSize):
+                        if pixel_array[(x*cellSize)+a,cellSize+b].all() != 0:
+                            empty = False
+                            break
+            if empty:
+                break
+            else:
+                x += 1
+        self.newTileButtonTexture = AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1)
+        ### Identify how many frames for the Sliding Door animation ###
+        if len(pixel_array[0])>(cellSize*2):
+            x=0
+            while True:
+                empty = True
+                if (x*cellSize) < width:
+                    for b in range(cellSize):
+                        for a in range(cellSize):
+                            if pixel_array[(x*cellSize)+a,(cellSize*2)+b].all() != 0:
+                                empty = False
+                                break
+                if empty:
+                    break
+                else:
+                    x += 1
+            self.slidingDoor = AnimatedTile(self.gameState,Vector2(0,2),Vector2(0,0),x-1)
+        
 
     def render(self,window):
         for layer in self.layers:
@@ -488,7 +587,7 @@ class UserInterface():
     def __init__(self):
         # Window
         pygame.init()
-        self.window = pygame.display.set_mode((700,1024))
+        self.window = pygame.display.set_mode((840,1050))
         pygame.display.set_caption("Pieces to Pictures")
         pygame.display.set_icon(pygame.image.load("icon.png"))
         
@@ -499,7 +598,19 @@ class UserInterface():
         
         # Loop properties
         self.clock = pygame.time.Clock()
-        self.running = True        
+        self.running = True     
+
+    def gameDifficulty(self,level):
+        if self.playGameMode is None:
+            self.playGameMode = PlayGameMode(self)
+        self.playGameMode.commands.append(gameDifficulty(self.playGameMode,level))
+        try:
+            self.playGameMode.update()
+            self.currentActiveMode = 'Play'
+        except Exception as ex:
+            print(ex)
+            self.playGameMode = None
+            self.showMessage("Level loading failed :-(")
         
     def loadLevel(self, action):
         if self.playGameMode is None:
