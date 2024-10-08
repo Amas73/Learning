@@ -83,7 +83,7 @@ class GameState(GameLevel):
         self.pictureCellRatio = max(self.pictureCellRatios.x,self.pictureCellRatios.y)
         self.pictureScaled = pygame.transform.smoothscale(self.level.pictureImage, (self.pictureSize.x * self.pictureCellRatio, self.pictureSize.y * self.pictureCellRatio))
         pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
-        offsetRect = Rect(int(pictureOffset.x), int(pictureOffset.y), self.cellSize.x*5, self.cellSize.y*5)
+        offsetRect = Rect(int(pictureOffset.x), int(pictureOffset.y), self.cellSize.x*self.cellCount, self.cellSize.y*self.cellCount)
         self.pictureImage = self.pictureScaled.subsurface(offsetRect)
         
         self.theme = ThemeGraphics(self.cellSize)
@@ -450,6 +450,7 @@ class PlayGameMode(GameMode):
         
         self.commands = []
         self.mousePosStart = ()
+        self.gameOver = False
 
         # Loop properties
         self.clock = pygame.time.Clock()
@@ -497,6 +498,10 @@ class PlayGameMode(GameMode):
                     
         self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
 
+        # If the game is over, all commands creations are disabled
+        if self.gameOver:
+            return
+        
         for tile in self.gameState.inFlightTiles:
             if tile.status == 'inflight':
                 self.commands.append(MoveTile(tile,self.gameState))
@@ -507,6 +512,8 @@ class PlayGameMode(GameMode):
         self.commands.clear()
         if self.gameState.status == 'level complete':
             self.running = False
+            self.gameOver = True
+            self.ui.showMessage("GAME OVER")
     
     def NewTileQueue(self):
         for x in range(self.gameState.cellCount):
@@ -520,14 +527,12 @@ class PlayGameMode(GameMode):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
 
     def NewFrame(self):
-        frameArray = [(-1,-1,4),(0,-1,3),(1,-1,3),(2,-1,3),(3,-1,3),(4,-1,3),(5,-1,5),\
-                       (-1,0,2),(5,0,0),\
-                       (-1,1,2),(5,1,0),\
-                       (-1,2,2),(5,2,0),\
-                       (-1,3,2),(5,3,0),\
-                       (-1,4,2),(5,4,0),\
-                       (-1,5,2),(5,5,0),\
-                       (-1,6,7),(0,6,1),(1,6,1),(2,6,1),(3,6,1),(4,6,1),(5,6,6)]
+        frameArray = [(-1,-1,4),(self.gameState.cellCount,-1,5),(-1,self.gameState.cellCount+1,7),(self.gameState.cellCount,self.gameState.cellCount+1,6)]
+        for x in range(0,self.gameState.cellCount+1):
+            if x < self.gameState.cellCount:
+                frameArray.extend([(x,-1,3),(x,self.gameState.cellCount+1,1)])
+            frameArray.extend([(-1,x,2),(self.gameState.cellCount,x,0)])
+        
         for x,y,a in frameArray:
             self.gameState.frame.append(Tile(self.gameState,Vector2(a,0),Vector2(x,y)))
         pixel_array = surfarray.array3d(self.gameState.themeImage)
@@ -597,6 +602,7 @@ class UserInterface():
         self.difficulty = action
         if self.playGameMode is None:
             self.playGameMode = PlayGameMode(self)
+            self.playGameMode.gameOver = False
         #self.playGameMode.commands.append(LoadLevelCommand(self.playGameMode,action))
         try:
             self.playGameMode.update()
