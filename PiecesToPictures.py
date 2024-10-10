@@ -552,8 +552,7 @@ class PlayGameMode(GameMode):
                 break
             else:
                 x += 1
-        self.newTileButton = AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1)
-        print(self.newTileButton.textureGrid)
+        self.gameState.newTileButton.append(AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1))
         ### Identify how many frames for the Sliding Door animation ###
         if len(pixel_array[0])>(cellSize*2):
             x=0
