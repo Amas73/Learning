@@ -452,10 +452,7 @@ class PlayGameMode(GameMode):
         self.mousePosStart = ()
         self.gameOver = False
 
-        # Loop properties
-        self.clock = pygame.time.Clock()
-        self.running = True
-
+        
     def orthagonalVector(self,mouseStartPos,mouseEndPos):
         moveX = int(mouseEndPos[0]-mouseStartPos[0])
         moveY = int(mouseEndPos[1]-mouseStartPos[1])
@@ -603,7 +600,6 @@ class UserInterface():
         if self.playGameMode is None:
             self.playGameMode = PlayGameMode(self)
             self.playGameMode.gameOver = False
-        #self.playGameMode.commands.append(LoadLevelCommand(self.playGameMode,action))
         try:
             self.playGameMode.update()
             self.currentActiveMode = 'Play'
@@ -644,6 +640,7 @@ class UserInterface():
                     
             # Render game (if any), and then the overlay (if active)
             if self.playGameMode is not None:
+                self.window.fill((0,0,0))
                 self.playGameMode.render(self.window)
             else:
                 self.window.fill((0,0,0))
