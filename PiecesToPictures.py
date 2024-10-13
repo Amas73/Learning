@@ -21,11 +21,20 @@ class Tile():
         self.position = position
 
 class AnimatedTile(Tile):
-    def __init__(self,state,tile,position,maxFrame,animateSpeed=0.2):
+    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2):
         super().__init__(state,tile,position)
-        self.maxFrame = maxFrame
         self.frame = 0
+        self.maxFrame = maxFrame
         self.animationSpeed = animateSpeed
+        self.imageFile = imageFile
+
+class AnimatedStateTile(AnimatedTile):
+    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed'):
+        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed)
+        self.status = status
+        self.openTime = openTime
+        self.closedTime = closedTime
+        self.pauseState = 0
 
 class Piece(Tile):
     def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3):
@@ -52,6 +61,7 @@ class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
         self.pictureImage = pygame.image.load("avengers.jpg")
+        self.doors = [[(-1,3),0.2,250,50],[(5,3),0.2,250,50],[(3,6),0.2,250,50]]
         #random.seed(22)
 
 class ThemeGraphics():
@@ -94,7 +104,7 @@ class GameState(GameLevel):
         self.board = []
         self.frame = []
         self.newTileButton = []
-        self.slidingDoor = []
+        self.slidingDoors = []
         self.inFlightTiles = []
         self.animatedTiles = []
         self.status = 'in game'
@@ -133,6 +143,25 @@ class MoveTile(Command):
             complete = False
         if complete:
             self.state.status = 'level complete'
+
+class AnimateTile(Command):
+    def __init__(self,tile):
+        self.tile = tile
+    def run(self):
+        if self.pauseState > 0:
+            self.pauseState -= 1
+            self.speed *= -1
+            if self.status == 'open':
+                self.status = 'closed'
+        else:
+            frame = self.frame + self.speed
+            if frame >= self.maxFrame:
+                self.status = 'open'
+                self.pauseState = self.openTime
+            elif frame <= 0:
+                self.pauseState = self.closedTime
+            else:
+                self.frame = frame                  
 
 class NewTile(Command):
     def __init__(self,state):
@@ -265,7 +294,15 @@ class AnimationLayer(Layer):
     
     def render(self,window):
         for tile in self.gameState.animatedTiles:
-            self.renderTile(window,tile)                    
+            pos = tile.position
+            dir = None
+            if pos.x == -1:
+                dir = 180
+            if pos.y == -1:
+                dir = 90
+            if pos.y == self.gameState.cellCount+1:
+                dir == 270
+            self.renderTile(window,tile,dir)                    
 
 class ForegroundLayer(Layer):  
     def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
@@ -441,17 +478,21 @@ class PlayGameMode(GameMode):
             BackgroundLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.frame),
             BoardLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.board),
             InFlightLayer(self.gameState.cellSize,self.gameState.pictureImage,self.gameState,self.gameState.inFlightTiles),
+            AnimationLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.animatedTiles),
             ForegroundLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.newTileButton)
         ]
         
-        self.NewFrame()
-        self.NewTileQueue()
-        self.NewBoard()
-        
+        self.frameDoors = []
         self.commands = []
         self.mousePosStart = ()
         self.gameOver = False
 
+        self.SetDoors()
+        self.NewFrame()
+        self.NewTileQueue()
+        self.NewBoard()
+        
+        
         
     def orthagonalVector(self,mouseStartPos,mouseEndPos):
         moveX = int(mouseEndPos[0]-mouseStartPos[0])
@@ -523,12 +564,51 @@ class PlayGameMode(GameMode):
     def NewBoard(self):
         self.gameState.board = [[0 for x in range(self.gameState.cellCount+1)] for y in range(self.gameState.cellCount)]
 
+    def SetDoors(self):
+        ### Identify how many frames for the Sliding Door animation ###
+        pixel_array = surfarray.array3d(self.gameState.themeImage)
+        width = len(pixel_array)
+        cellSize = int(self.gameState.cellSize.x)
+        x=0
+        if len(pixel_array[0])>(cellSize*2):
+            while True:
+                empty = True
+                if (x*cellSize) < width:
+                    for b in range(cellSize):
+                        for a in range(cellSize):
+                            if pixel_array[(x*cellSize)+a,(cellSize*2)+b].all() != 0:
+                                empty = False
+                                break
+                if empty:
+                    break
+                else:
+                    x += 1
+        for door in self.gameState.level.doors:
+            pos = Vector2(door[0])
+            speed,open,closed = door[1:4]
+            if pos.x>2:
+                pos.x += self.gameState.cellCount - 5
+            if pos.y>3:
+                pos.y +=self.gameState.cellCount - 5
+            self.gameState.slidingDoors.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
+            self.frameDoors.append(pos)
+
     def NewFrame(self):
         frameArray = [(-1,-1,4),(self.gameState.cellCount,-1,5),(-1,self.gameState.cellCount+1,7),(self.gameState.cellCount,self.gameState.cellCount+1,6)]
         for x in range(0,self.gameState.cellCount+1):
             if x < self.gameState.cellCount:
-                frameArray.extend([(x,-1,3),(x,self.gameState.cellCount+1,1)])
-            frameArray.extend([(-1,x,2),(self.gameState.cellCount,x,0)])
+                print(f"Vector2({x},-1) in {self.frameDoors} - {Vector2(x,-1) in self.frameDoors}")
+                if Vector2(x,-1) not in self.frameDoors:
+                    frameArray.append((x,-1,3))
+                print(f"Vector2({x},{self.gameState.cellCount+1}) in {self.frameDoors} - {Vector2(x,self.gameState.cellCount+1) in self.frameDoors}")
+                if Vector2(x,self.gameState.cellCount+1) not in self.frameDoors:
+                    frameArray.append((x,self.gameState.cellCount+1,1))
+            print(f"Vector2(-1,{x}) in {self.frameDoors} - {Vector2(-1,x) in self.frameDoors}")
+            if Vector2(-1,x) not in self.frameDoors:
+                frameArray.append((-1,x,2))
+            print(f"Vector2({self.gameState.cellCount},{x}) in {self.frameDoors} - {Vector2(self.gameState.cellCount,x) in self.frameDoors}")
+            if Vector2(self.gameState.cellCount,x) not in self.frameDoors:
+                frameArray.append((self.gameState.cellCount,x,0))
         
         for x,y,a in frameArray:
             self.gameState.frame.append(Tile(self.gameState,Vector2(a,0),Vector2(x,y)))
@@ -549,24 +629,7 @@ class PlayGameMode(GameMode):
                 break
             else:
                 x += 1
-        self.gameState.newTileButton.append(AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1))
-        ### Identify how many frames for the Sliding Door animation ###
-        if len(pixel_array[0])>(cellSize*2):
-            x=0
-            while True:
-                empty = True
-                if (x*cellSize) < width:
-                    for b in range(cellSize):
-                        for a in range(cellSize):
-                            if pixel_array[(x*cellSize)+a,(cellSize*2)+b].all() != 0:
-                                empty = False
-                                break
-                if empty:
-                    break
-                else:
-                    x += 1
-            self.slidingDoor = AnimatedTile(self.gameState,Vector2(0,2),Vector2(0,0),x)
-        
+        self.gameState.newTileButton.append(AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1,self.gameState.themeImage))
 
     def render(self,window):
         for layer in self.layers:
