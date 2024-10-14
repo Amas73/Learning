@@ -15,30 +15,31 @@ def vectorInt(vector: Vector2) -> Vector2:
 ###############################################################################
 
 class Tile():
-    def __init__(self,state,tile,position):
+    def __init__(self,state,tile,position,angle=None):
         self.state = state
         self.textureGrid = tile
         self.position = position
+        self.angle = angle
+        self.frame = 0
 
 class AnimatedTile(Tile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2):
-        super().__init__(state,tile,position)
-        self.frame = 0
+    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None):
+        super().__init__(state,tile,position,angle)
         self.maxFrame = maxFrame
         self.animationSpeed = animateSpeed
         self.imageFile = imageFile
 
 class AnimatedStateTile(AnimatedTile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed'):
-        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed)
+    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed',angle=None):
+        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed,angle)
         self.status = status
         self.openTime = openTime
         self.closedTime = closedTime
         self.pauseState = 0
 
 class Piece(Tile):
-    def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3):
-        super().__init__(state,tile,position)
+    def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3,angle=None):
+        super().__init__(state,tile,position,angle)
         self.endPosition = copy(position)
         self.status = status
         self.points = points
@@ -61,7 +62,7 @@ class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
         self.pictureImage = pygame.image.load("avengers.jpg")
-        self.doors = [[(-1,3),0.2,250,50],[(5,3),0.2,250,50],[(3,6),0.2,250,50]]
+        self.doors = [[(-1,3),0.2,250,50],[(5,3),0.2,250,50],[(2,6),0.2,250,50]]
         #random.seed(22)
 
 class ThemeGraphics():
@@ -104,7 +105,6 @@ class GameState(GameLevel):
         self.board = []
         self.frame = []
         self.newTileButton = []
-        self.slidingDoors = []
         self.inFlightTiles = []
         self.animatedTiles = []
         self.status = 'in game'
@@ -144,24 +144,10 @@ class MoveTile(Command):
         if complete:
             self.state.status = 'level complete'
 
-class AnimateTile(Command):
-    def __init__(self,tile):
-        self.tile = tile
-    def run(self):
-        if self.pauseState > 0:
-            self.pauseState -= 1
-            self.speed *= -1
-            if self.status == 'open':
-                self.status = 'closed'
-        else:
-            frame = self.frame + self.speed
-            if frame >= self.maxFrame:
-                self.status = 'open'
-                self.pauseState = self.openTime
-            elif frame <= 0:
-                self.pauseState = self.closedTime
-            else:
-                self.frame = frame                  
+class Pause(Command):
+    def __init__ (self,state):
+        self.state = state
+        self.state.status = 'pause'
 
 class NewTile(Command):
     def __init__(self,state):
@@ -221,10 +207,9 @@ class Layer():
     
     def renderTile(self,window,tile,angle=None):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
-        texturePoint = tile.textureGrid.elementwise()*self.cellSize
+        if hasattr(tile, 'openTime'): print(tile.position, tile.frame)
+        texturePoint = tile.textureGrid.elementwise()*self.cellSize + Vector2(tile.frame,0)
         textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
-        window.blit(self.texture,spritePoint,textureRect)
-        
         if angle is None:
             window.blit(self.texture,spritePoint,textureRect)
         else:
@@ -290,19 +275,37 @@ class AnimationLayer(Layer):
     def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
         super().__init__(ui,imageFile)
         self.gameState = gameState
-        self.surfaceFlags = surfaceFlags     
+        self.surfaceFlags = surfaceFlags
+        self.animatedTiles = tiles
     
     def render(self,window):
-        for tile in self.gameState.animatedTiles:
+        for tile in self.animatedTiles:
             pos = tile.position
-            dir = None
+            if tile.angle is None:
+                dir = None
+            else:
+                dir = tile.angle
             if pos.x == -1:
                 dir = 180
             if pos.y == -1:
                 dir = 90
             if pos.y == self.gameState.cellCount+1:
-                dir == 270
-            self.renderTile(window,tile,dir)                    
+                dir = 270
+            self.renderTile(window,tile,dir)
+        if tile.pauseState > 0:
+            tile.pauseState -= 1
+            tile.animationSpeed *= -1
+            if tile.status == 'open':
+                tile.status = 'closed'
+        else:
+            frame = tile.frame + tile.animationSpeed
+            if frame >= tile.maxFrame:
+                tile.status = 'open'
+                tile.pauseState = tile.openTime
+            elif frame <= 0:
+                tile.pauseState = tile.closedTime
+            else:
+                tile.frame = frame
 
 class ForegroundLayer(Layer):  
     def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
@@ -507,12 +510,10 @@ class PlayGameMode(GameMode):
     def processInput(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                self.running = False
-                break
+                self.commands.append(Pause(self.gameState))
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                    break
+                    self.commands.append(Pause(self.gameState))
                 elif event.key == pygame.K_SPACE:
                     self.commands.append(NewTile(self.gameState))
             elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -548,10 +549,14 @@ class PlayGameMode(GameMode):
         for command in self.commands:
             command.run()
         self.commands.clear()
+        if self.gameState.status == 'pause':
+            self.running = False
+            self.gameOver = True
+            self.ui.showMessage("PAUSED")
         if self.gameState.status == 'level complete':
             self.running = False
             self.gameOver = True
-            self.ui.showMessage("GAME OVER")
+            self.ui.showMessage("Level Completed")
     
     def NewTileQueue(self):
         for x in range(self.gameState.cellCount):
@@ -590,23 +595,19 @@ class PlayGameMode(GameMode):
                 pos.x += self.gameState.cellCount - 5
             if pos.y>3:
                 pos.y +=self.gameState.cellCount - 5
-            self.gameState.slidingDoors.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
+            self.gameState.animatedTiles.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
             self.frameDoors.append(pos)
 
     def NewFrame(self):
         frameArray = [(-1,-1,4),(self.gameState.cellCount,-1,5),(-1,self.gameState.cellCount+1,7),(self.gameState.cellCount,self.gameState.cellCount+1,6)]
         for x in range(0,self.gameState.cellCount+1):
             if x < self.gameState.cellCount:
-                print(f"Vector2({x},-1) in {self.frameDoors} - {Vector2(x,-1) in self.frameDoors}")
                 if Vector2(x,-1) not in self.frameDoors:
                     frameArray.append((x,-1,3))
-                print(f"Vector2({x},{self.gameState.cellCount+1}) in {self.frameDoors} - {Vector2(x,self.gameState.cellCount+1) in self.frameDoors}")
                 if Vector2(x,self.gameState.cellCount+1) not in self.frameDoors:
                     frameArray.append((x,self.gameState.cellCount+1,1))
-            print(f"Vector2(-1,{x}) in {self.frameDoors} - {Vector2(-1,x) in self.frameDoors}")
             if Vector2(-1,x) not in self.frameDoors:
                 frameArray.append((-1,x,2))
-            print(f"Vector2({self.gameState.cellCount},{x}) in {self.frameDoors} - {Vector2(self.gameState.cellCount,x) in self.frameDoors}")
             if Vector2(self.gameState.cellCount,x) not in self.frameDoors:
                 frameArray.append((self.gameState.cellCount,x,0))
         
