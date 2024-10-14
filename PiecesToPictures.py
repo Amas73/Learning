@@ -62,7 +62,7 @@ class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
         self.pictureImage = pygame.image.load("avengers.jpg")
-        self.doors = [[(-1,3),0.2,250,50],[(5,3),0.2,250,50],[(2,6),0.2,250,50]]
+        self.doors = [[(-1,3),0.3,50,20],[(5,3),0.3,50,20],[(2,6),0.3,50,20]]
         #random.seed(22)
 
 class ThemeGraphics():
@@ -208,8 +208,7 @@ class Layer():
     
     def renderTile(self,window,tile,angle=None):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
-        if hasattr(tile, 'openTime'): print(tile.position, tile.frame)
-        texturePoint = tile.textureGrid.elementwise()*self.cellSize + Vector2(tile.frame,0)
+        texturePoint = vectorInt(tile.textureGrid + Vector2(tile.frame,0)).elementwise()*self.cellSize
         textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
         if angle is None:
             window.blit(self.texture,spritePoint,textureRect)
@@ -293,20 +292,21 @@ class AnimationLayer(Layer):
             if pos.y == self.gameState.cellCount+1:
                 dir = 270
             self.renderTile(window,tile,dir)
-        if tile.pauseState > 0:
-            tile.pauseState -= 1
-            tile.animationSpeed *= -1
-            if tile.status == 'open':
-                tile.status = 'closed'
-        else:
-            frame = tile.frame + tile.animationSpeed
-            if frame >= tile.maxFrame:
-                tile.status = 'open'
-                tile.pauseState = tile.openTime
-            elif frame <= 0:
-                tile.pauseState = tile.closedTime
+            if tile.pauseState > 0:
+                tile.pauseState -= 1
+                if tile.pauseState <= 0:
+                    tile.animationSpeed *= -1
+                    if tile.status == 'open':
+                        tile.status = 'closed'
             else:
-                tile.frame = frame
+                frame = tile.frame + tile.animationSpeed
+                if frame-2 >= tile.maxFrame:
+                    tile.status = 'open'
+                    tile.pauseState = tile.openTime
+                elif frame <= 0:
+                    tile.pauseState = tile.closedTime
+                else:
+                    tile.frame = frame
 
 class ForegroundLayer(Layer):  
     def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
