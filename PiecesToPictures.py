@@ -147,6 +147,7 @@ class MoveTile(Command):
 class Pause(Command):
     def __init__ (self,state):
         self.state = state
+    def run(self):
         self.state.status = 'pause'
 
 class NewTile(Command):
