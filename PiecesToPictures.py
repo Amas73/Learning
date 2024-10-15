@@ -104,10 +104,18 @@ class GameState(GameLevel):
         self.queue = []
         self.board = []
         self.frame = []
+        self.doorPositions = []
+        self.slidingDoors = []
         self.newTileButton = []
         self.inFlightTiles = []
         self.animatedTiles = []
         self.status = 'in game'
+
+    def DoorIsOpen(self,position):
+        for door in self.slidingDoors:
+            if door.position == position and door.status == 'open':
+                return True
+        return False
 
 
 ###############################################################################
@@ -130,7 +138,15 @@ class MoveTile(Command):
             and self.tile.position.y <= self.tile.endPosition.y + self.tile.speed:
             self.tile.position = copy(self.tile.endPosition)
             self.tile.status = 'board'
+            self.CheckDoor()
             self.CheckComplete()
+    def CheckDoor(self):
+        doorPosition = self.tile.position + self.tile.moveVector
+        if doorPosition in self.state.doorPositions and self.state.DoorIsOpen(doorPosition):
+            self.state.board[int(self.tile.position.x)][(int(self.tile.position.y))] = 0
+            self.tile.position = Vector2(0,0)
+            self.tile.status = 'queue'
+            self.state.queue.append(self.tile)
     def CheckComplete(self):
         if len(self.state.queue) == 0:
             complete = True
@@ -486,7 +502,7 @@ class PlayGameMode(GameMode):
             ForegroundLayer(self.gameState.cellSize,self.gameState.themeImage,self.gameState,self.gameState.newTileButton)
         ]
         
-        self.frameDoors = []
+        self.doorPositions = self.gameState.doorPositions
         self.commands = []
         self.mousePosStart = ()
         self.gameOver = False
@@ -596,20 +612,21 @@ class PlayGameMode(GameMode):
                 pos.x += self.gameState.cellCount - 5
             if pos.y>3:
                 pos.y +=self.gameState.cellCount - 5
-            self.gameState.animatedTiles.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
-            self.frameDoors.append(pos)
+            self.gameState.slidingDoors.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
+            self.gameState.doorPositions.append(pos)
+        self.gameState.animatedTiles.extend(self.gameState.slidingDoors)
 
     def NewFrame(self):
         frameArray = [(-1,-1,4),(self.gameState.cellCount,-1,5),(-1,self.gameState.cellCount+1,7),(self.gameState.cellCount,self.gameState.cellCount+1,6)]
         for x in range(0,self.gameState.cellCount+1):
             if x < self.gameState.cellCount:
-                if Vector2(x,-1) not in self.frameDoors:
+                if Vector2(x,-1) not in self.doorPositions:
                     frameArray.append((x,-1,3))
-                if Vector2(x,self.gameState.cellCount+1) not in self.frameDoors:
+                if Vector2(x,self.gameState.cellCount+1) not in self.doorPositions:
                     frameArray.append((x,self.gameState.cellCount+1,1))
-            if Vector2(-1,x) not in self.frameDoors:
+            if Vector2(-1,x) not in self.doorPositions:
                 frameArray.append((-1,x,2))
-            if Vector2(self.gameState.cellCount,x) not in self.frameDoors:
+            if Vector2(self.gameState.cellCount,x) not in self.doorPositions:
                 frameArray.append((self.gameState.cellCount,x,0))
         
         for x,y,a in frameArray:
