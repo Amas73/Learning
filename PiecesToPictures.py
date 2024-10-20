@@ -15,33 +15,32 @@ def vectorInt(vector: Vector2) -> Vector2:
 ###############################################################################
 
 class Tile():
-    def __init__(self,state,tile,position,angle=None):
+    def __init__(self,state,tile,position,angle=None,status=None):
         self.state = state
         self.textureGrid = tile
         self.position = position
         self.angle = angle
+        self.status = status
         self.frame = 0
 
 class AnimatedTile(Tile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None):
-        super().__init__(state,tile,position,angle)
+    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None,status=None):
+        super().__init__(state,tile,position,angle,status)
         self.maxFrame = maxFrame
         self.animationSpeed = animateSpeed
         self.imageFile = imageFile
 
 class AnimatedStateTile(AnimatedTile):
     def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed',angle=None):
-        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed,angle)
-        self.status = status
+        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed,angle,status)
         self.openTime = openTime
         self.closedTime = closedTime
         self.pauseState = 0
 
 class Piece(Tile):
     def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3,angle=None):
-        super().__init__(state,tile,position,angle)
+        super().__init__(state,tile,position,angle,status)
         self.endPosition = copy(position)
-        self.status = status
         self.points = points
         self.speed = moveSpeed
         self.moveVector = Vector2(0,0)
@@ -54,14 +53,37 @@ class Piece(Tile):
                 or newPosition.x<0 or newPosition.x>=len(state.board)\
                 or newPosition.y<0 or newPosition.y>=len(state.board[0])\
                 or state.board[int(newPosition.x)][(int(newPosition.y))] !=0:
-                state.board[int(testedPosition.x)][(int(testedPosition.y))] = self
                 break
         self.endPosition = testedPosition
+        self.status = 'inflight'
+        self.state.inFlightTiles.append(self)
+        self.state.board[int(self.position.x)][int(self.position.y)] = 0
+
+class AnimatedPiece(Piece,AnimatedTile):
+    def __init__(self,state,tile,position,maxFrame,imageFile,status,points=0,moveSpeed=0.3,animateSpeed=0.2,angle=None):
+        super().__init__(state,tile,position,angle,status,maxFrame,imageFile,animateSpeed=0.2)
+        #super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None,status=None)
+        #super().__init__(maxFrame,imageFile,animateSpeed=0.2)
+    def commandAction(self):
+        pass
 
 class GameLevel():
     def __init__(self):
         self.difficulties = {'Easy': 4, 'Normal': 5, 'Hard': 6, 'Hardest': 7}
-        self.pictureImage = pygame.image.load("avengers.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\avengers.jpg")
+        #elf.pictureImage = pygame.image.load("pictures\\00004_1872920033_by_crushedmidget_di2p1ng-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\red_dwarf_by_pzns_dfwhlom-375w-2x.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\anime_sky_by_nataliciosiqueira_dibkrzw-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\rendezvous__by_mr_nerb_dic8m91-pre.jpg")
+        self.pictureImage = pygame.image.load("pictures\\soviet_cosmos_rockets_in_the_space_to_star_by_sasha_cher312_dicioc0-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\space_dragon_by_ollegr_dicw3wa-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\stellar_morning_by_queenneeko_dic3ib1-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\superman_colors__by_brunocotic_dicj4ou-414w-2x.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\autumn_castle_by_warriorkingt22_diar122-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\there_is_a_view_of_a_town_at_sunset_by_funyara_di7citc-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\watercolor__wide_angle_landscape_scene_of_a_blonde_by_eilalija_dgt2fv0-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\do_you_want_to_come_to_my_party__by_kaawiss_di61q3e-pre.jpg")
+        #self.pictureImage = pygame.image.load("pictures\\doctor_who_the_star_beast_wall_poster_by_pzns_dgi9jhj-375w-2x.jpg")
         self.doors = [[(-1,3),0.3,50,20],[(5,3),0.3,50,20],[(2,6),0.3,50,20]]
         #random.seed(22)
 
@@ -138,6 +160,7 @@ class MoveTile(Command):
             and self.tile.position.y <= self.tile.endPosition.y + self.tile.speed:
             self.tile.position = copy(self.tile.endPosition)
             self.tile.status = 'board'
+            self.state.board[int(self.tile.position.x)][(int(self.tile.position.y))] = self.tile
             self.CheckDoor()
             self.CheckComplete()
     def CheckDoor(self):
@@ -430,7 +453,6 @@ class MenuGameMode(GameMode):
         self.menuWidth = 0
         for item in self.menuItems:
             surface = self.itemFont.render(item['title'], True, (200, 0, 0))
-            
             self.menuWidth = max(self.menuWidth, surface.get_width())
             item['surface'] = surface        
         
@@ -457,6 +479,15 @@ class MenuGameMode(GameMode):
                         menuItem['action']()
                     except Exception as ex:
                         print(ex)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                mousePos = pygame.mouse.get_pos()
+                for x,rect in enumerate(self.menuRects):
+                    if rect.collidepoint(mousePos):
+                        menuItem = self.menuItems[x]
+                try:
+                    menuItem['action']()
+                except Exception as ex:
+                    print(ex)
                     
     def update(self):
         pass
@@ -473,10 +504,15 @@ class MenuGameMode(GameMode):
         
         # Draw menu items
         x = (window.get_width() - self.menuWidth) // 2
+        self.menuRects = []
         for index, item in enumerate(self.menuItems):
             # Item text
             surface = item['surface']
             window.blit(surface, (x, y))
+            surfaceRect = surface.get_rect()
+            surfaceRect.x += x
+            surfaceRect.y += y
+            self.menuRects.append(surfaceRect)
             
             # Cursor
             if index == self.currentMenuItem:
@@ -511,8 +547,7 @@ class PlayGameMode(GameMode):
         self.NewFrame()
         self.NewTileQueue()
         self.NewBoard()
-        
-        
+        self.createBombTile()
         
     def orthagonalVector(self,mouseStartPos,mouseEndPos):
         moveX = int(mouseEndPos[0]-mouseStartPos[0])
@@ -547,10 +582,6 @@ class PlayGameMode(GameMode):
                             tile = self.gameState.board[int(mouseVector.x)][int(mouseVector.y)]
                             tile.moveVector = moveVector
                             tile.findEndPosition(self.gameState)
-                            if tile.position != tile.endPosition:
-                                tile.status = 'inflight'
-                                self.gameState.inFlightTiles.append(tile)
-                                self.gameState.board[int(mouseVector.x)][int(mouseVector.y)] = 0
                     
         self.commands.append(RemoveNonInflightTiles(self.gameState.inFlightTiles))
 
@@ -649,6 +680,17 @@ class PlayGameMode(GameMode):
             else:
                 x += 1
         self.gameState.newTileButton.append(AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1,self.gameState.themeImage))
+
+    def createBombTile(self):
+        tile = Vector2(0,0)
+        position = Vector2(0,0)
+        maxFrame = 75
+        imageFile = "bomb.png"
+        status = None
+        points = 0 
+        moveSpeed = 0.3
+        animateSpeed = 0.2
+        self.bombTile = AnimatedPiece(self.gameState,tile,position,maxFrame,imageFile,status,points,moveSpeed,animateSpeed,angle=None)
 
     def render(self,window):
         for layer in self.layers:
