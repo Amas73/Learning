@@ -15,8 +15,9 @@ def vectorInt(vector: Vector2) -> Vector2:
 ###############################################################################
 
 class Tile():
-    def __init__(self,state,tile,position,angle=None,status=None):
+    def __init__(self,state,imageFile,tile,position,angle=None,status=None):
         self.state = state
+        self.texture = imageFile
         self.textureGrid = tile
         self.position = position
         self.angle = angle
@@ -24,24 +25,23 @@ class Tile():
         self.frame = 0
 
 class AnimatedTile(Tile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None,status=None):
-        super().__init__(state,tile,position,angle,status)
+    def __init__(self,state,imageFile,tile,position,maxFrame,animateSpeed=0.2,angle=None,status=None):
+        super().__init__(state,imageFile,tile,position,angle,status)
         self.maxFrame = maxFrame
         self.animationSpeed = animateSpeed
         self.imageFile = imageFile
 
 class AnimatedStateTile(AnimatedTile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed',angle=None):
-        super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed,angle,status)
+    def __init__(self,state,imageFile,tile,position,maxFrame,animateSpeed=0.2,openTime=0.2,closedTime=0.2,status='closed',angle=None):
+        super().__init__(state,imageFile,tile,position,maxFrame,animateSpeed,angle,status)
         self.openTime = openTime
         self.closedTime = closedTime
         self.pauseState = 0
 
 class Piece(Tile):
-    def __init__(self,state,tile,position,status,points=0,moveSpeed=0.3,angle=None):
+    def __init__(self,state,tile,position,status=None,moveSpeed=0.3,angle=None):
         super().__init__(state,tile,position,angle,status)
         self.endPosition = copy(position)
-        self.points = points
         self.speed = moveSpeed
         self.moveVector = Vector2(0,0)
     def findEndPosition(self,state):
@@ -60,10 +60,12 @@ class Piece(Tile):
         self.state.board[int(self.position.x)][int(self.position.y)] = 0
 
 class AnimatedPiece(Piece,AnimatedTile):
-    def __init__(self,state,tile,position,maxFrame,imageFile,status,points=0,moveSpeed=0.3,animateSpeed=0.2,angle=None):
-        super().__init__(state,tile,position,angle,status,maxFrame,imageFile,animateSpeed=0.2)
-        #super().__init__(state,tile,position,maxFrame,imageFile,animateSpeed=0.2,angle=None,status=None)
-        #super().__init__(maxFrame,imageFile,animateSpeed=0.2)
+    def __init__(self,state,imageFile,tile,position,maxFrame,status=None,moveSpeed=0.3,animateSpeed=0.2,angle=None):
+        super().__init__(state,tile,position,status,moveSpeed,angle)
+        self.imageFile = imageFile
+        self.maxFrame = maxFrame
+        self.animationSpeed = animateSpeed
+
     def commandAction(self):
         pass
 
@@ -118,6 +120,7 @@ class GameState(GameLevel):
         pictureOffset = ((self.pictureSize.elementwise()*self.pictureCellRatio) - (self.cellSize.elementwise()*self.cellCount)).elementwise()//2
         offsetRect = Rect(int(pictureOffset.x), int(pictureOffset.y), self.cellSize.x*self.cellCount, self.cellSize.y*self.cellCount)
         self.pictureImage = self.pictureScaled.subsurface(offsetRect)
+        self.bombTile = self.createBombTile()
         
         self.theme = ThemeGraphics(self.cellSize)
         self.themeImage = self.theme.themeImage
@@ -132,6 +135,16 @@ class GameState(GameLevel):
         self.inFlightTiles = []
         self.animatedTiles = []
         self.status = 'in game'
+    
+    def createBombTile(self):
+        tile = Vector2(0,0)
+        position = Vector2(0,0)
+        maxFrame = 75
+        imageFile = "bomb.png"
+        status = None
+        moveSpeed = 0.3
+        animateSpeed = 0.2
+        return AnimatedPiece(self,tile,position,imageFile,maxFrame,status,moveSpeed,animateSpeed,angle=None)
 
     def DoorIsOpen(self,position):
         for door in self.slidingDoors:
@@ -194,7 +207,12 @@ class NewTile(Command):
         self.state = state
     def run(self):
         if len(self.state.queue)>0 and self.state.board[1][0] == 0:
-            tile = self.state.queue.pop(0)
+            rand = random.randint(0,5)
+            if rand == 0:
+                tile = copy(self.state.bombTile)
+                self.state.animatedTiles.append(tile)
+            else:
+                tile = self.state.queue.pop(0)
             tile.moveVector = Vector2(1,0)
             tile.status = 'inflight'
             tile.findEndPosition(self.state)
@@ -245,18 +263,18 @@ class Layer():
     def cellHeight(self):
         return int(self.cellSize.y)        
     
-    def renderTile(self,window,tile,angle=None):
+    def renderTile(self,window,tile):
         spritePoint = tile.position.elementwise()*self.gameState.cellSize + self.gameState.boardPosition
         texturePoint = vectorInt(tile.textureGrid + Vector2(tile.frame,0)).elementwise()*self.cellSize
         textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
-        if angle is None:
-            window.blit(self.texture,spritePoint,textureRect)
+        if tile.angle is None:
+            window.blit(tile.texture,spritePoint,textureRect)
         else:
             # Extract the tile in a window
             textureTile = pygame.Surface((self.cellWidth,self.cellHeight),pygame.SRCALPHA)
-            textureTile.blit(self.texture,(0,0),textureRect)
+            textureTile.blit(tile.texture,(0,0),textureRect)
             # Rotate the surface with the tile
-            rotatedTile = pygame.transform.rotate(textureTile,angle)
+            rotatedTile = pygame.transform.rotate(textureTile,tile.angle)
             # Compute the new coordinate on the screen, knowing that we rotate around the center of the tile
             spritePoint.x -= (rotatedTile.get_width() - textureTile.get_width()) // 2
             spritePoint.y -= (rotatedTile.get_height() - textureTile.get_height()) // 2
@@ -319,33 +337,24 @@ class AnimationLayer(Layer):
     
     def render(self,window):
         for tile in self.animatedTiles:
-            pos = tile.position
-            if tile.angle is None:
-                dir = None
-            else:
-                dir = tile.angle
-            if pos.x == -1:
-                dir = 180
-            if pos.y == -1:
-                dir = 90
-            if pos.y == self.gameState.cellCount+1:
-                dir = 270
-            self.renderTile(window,tile,dir)
-            if tile.pauseState > 0:
+            self.renderTile(window,tile)
+            if hasattr(tile,"pauseState") and tile.pauseState > 0:
                 tile.pauseState -= 1
                 if tile.pauseState <= 0:
                     tile.animationSpeed *= -1
                     if tile.status == 'open':
                         tile.status = 'closed'
+                else:
+                    frame = tile.frame + tile.animationSpeed
+                    if frame-2 >= tile.maxFrame:
+                        tile.status = 'open'
+                        tile.pauseState = tile.openTime
+                    elif frame <= 0:
+                        tile.pauseState = tile.closedTime
+                    else:
+                        tile.frame = frame
             else:
                 frame = tile.frame + tile.animationSpeed
-                if frame-2 >= tile.maxFrame:
-                    tile.status = 'open'
-                    tile.pauseState = tile.openTime
-                elif frame <= 0:
-                    tile.pauseState = tile.closedTime
-                else:
-                    tile.frame = frame
 
 class ForegroundLayer(Layer):  
     def __init__(self,ui,imageFile,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
@@ -547,7 +556,6 @@ class PlayGameMode(GameMode):
         self.NewFrame()
         self.NewTileQueue()
         self.NewBoard()
-        self.createBombTile()
         
     def orthagonalVector(self,mouseStartPos,mouseEndPos):
         moveX = int(mouseEndPos[0]-mouseStartPos[0])
@@ -643,7 +651,13 @@ class PlayGameMode(GameMode):
                 pos.x += self.gameState.cellCount - 5
             if pos.y>3:
                 pos.y +=self.gameState.cellCount - 5
-            self.gameState.slidingDoors.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed))
+            if pos.x == -1:
+                dir = 180
+            if pos.y == -1:
+                dir = 90
+            if pos.y == self.gameState.cellCount+1:
+                dir = 270
+            self.gameState.slidingDoors.append(AnimatedStateTile(self.gameState,Vector2(0,2),pos,x-1,self.gameState.themeImage,speed,open,closed,dir))
             self.gameState.doorPositions.append(pos)
         self.gameState.animatedTiles.extend(self.gameState.slidingDoors)
 
@@ -680,17 +694,6 @@ class PlayGameMode(GameMode):
             else:
                 x += 1
         self.gameState.newTileButton.append(AnimatedTile(self.gameState,Vector2(0,1),Vector2(0,0),x-1,self.gameState.themeImage))
-
-    def createBombTile(self):
-        tile = Vector2(0,0)
-        position = Vector2(0,0)
-        maxFrame = 75
-        imageFile = "bomb.png"
-        status = None
-        points = 0 
-        moveSpeed = 0.3
-        animateSpeed = 0.2
-        self.bombTile = AnimatedPiece(self.gameState,tile,position,maxFrame,imageFile,status,points,moveSpeed,animateSpeed,angle=None)
 
     def render(self,window):
         for layer in self.layers:
