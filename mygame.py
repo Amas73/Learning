@@ -1,76 +1,67 @@
-import os
 import pygame
+from pygame import Vector2
 from pygame import Rect
-from pygame.math import Vector2
+from copy import copy
 
-os.environ['SDL_VIDEO_CENTERED'] = '1'
+def vectorInt(vector:Vector2) -> Vector2:
+    return Vector2(int(vector.x), int(vector.y))
 
-class piece():
-    def __init__(self,state,position,tile):
-        self.state = state
+class Tile():
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, angle:int=None):
+        self.texture = imageFile
+        self.textureGrid = tile
         self.position = position
-        self.tile = tile
-    def move(self,moveVector):
-        pass 
+        self.angle = angle
+        self.currentFrame = 0
+        
+class MoveableTile(Tile):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2,  angle:int=None, moveSpeed:float=0.3):
+        super().__init__(imageFile,tile,position,angle)
+        self.speed = moveSpeed
+        self.endPosition = copy(self.position)
+        self.moveVector = Vector2(0,0)
+    def findEndPosition(self):
+        self.endPosition = Vector2(3,0) # really is a calculation
+        pass
 
-class Tile(piece):
-    def move(self,moveVector):
-        # Compute new tank position
-        newTilePos = self.position + moveVector
+class AnimatedTile(Tile):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, animateSpeed:float=0.2):
+        super().__init__(imageFile,tile,position,angle)
+        self.animationSpeed = animateSpeed
+        self.maxFrame = maxFrame
 
-        # Don't allow positions outside the world
-        if newTilePos.x < 0 or newTilePos.x >= self.state.worldWidth \
-        or newTilePos.y < 0 or newTilePos.y >= self.state.worldHeight:
-            return
-
-        # Don't allow tower positions 
-        for tile in self.state.pieces:
-            if newTilePos == tile.position:
-                return
-
-        self.position = newTilePos
-
+class MoveableAnimatedTile(Tile):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int,  angle:int=None, moveSpeed:float=0.3, animateSpeed:float=0.2):
+        super().__init__(imageFile,tile,position,angle)
+        self.speed = moveSpeed
+        self.endPosition = copy(self.position)
+        self.moveVector = Vector2(0,0)
+        self.animateSpeed = animateSpeed
+        self.maxFrame = maxFrame
 
 class GameState():
     def __init__(self):
-        self.worldSize = Vector2(10,14)
-        self.boardFrame = [ ] #arrays for the setup of the board frame
-        self.pieces = [
-            Tile(self,Vector2(5,4),Vector2(1,0))
-        ]
-    
-    @property
-    def worldWidth(self):
-        return int(self.worldSize.x)
-    
-    @property
-    def worldHeight(self):
-        return int(self.worldSize.y)
-        
-    def update(self,moveTileCommand):
-        self.pieces[0].move(moveTileCommand)
+        self.cellSize = Vector2(140,140)
+        self.boardPosition = Vector2(1.5*self.cellSize,2.5*self.cellSize)
 
-class UserInterface():
-    def __init__(self):
-        pygame.init()
 
-        # Game state
-        self.gameState = GameState()
+class Command():
+    def run(self):
+        raise NotImplementedError()
 
-        # Rendering properties
-        self.cellSize = Vector2(64,64)
-        self.pieceTexture = pygame.image.load("avengers.jpg")
+class AnimateTile(Command):
+    def __init__(self,tile):
+        tile.currentFrame += tile.animateSpeed
+        if tile.currentFrame >= tile.maxFrame:
+            tile.currentFrame = 0
+        print(tile.currentFrame)
+
+class Layer():
+    def __init__(self,cellSize):
+        self.cellSize = cellSize
         
-        # Window
-        windowSize = self.gameState.worldSize.elementwise() * self.cellSize
-        self.window = pygame.display.set_mode((int(windowSize.x),int(windowSize.y)))
-        pygame.display.set_caption("Pieces to Pictures")
-        pygame.display.set_icon(pygame.image.load("icon.png"))
-        self.moveTileCommand = Vector2(0,0)
-        
-        # Loop properties
-        self.clock = pygame.time.Clock()
-        self.running = True
+    def setTileset(self,cellSize):
+        self.cellSize = cellSize
         
     @property
     def cellWidth(self):
@@ -78,63 +69,82 @@ class UserInterface():
 
     @property
     def cellHeight(self):
-        return int(self.cellSize.y)
+        return int(self.cellSize.y)         
+    
+    def renderTile(self,window,tile):
+        spritePoint = tile.position.elementwise()*self.cellSize + self.gameState.boardPosition
+        texturePoint = vectorInt(tile.textureGrid + Vector2(int(tile.currentFrame),0)).elementwise()*self.cellSize
+        textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
+        texture = pygame.image.load(tile.texture)
+        if tile.angle is None:
+            window.blit(texture,spritePoint,textureRect)
+        else:
+            # Extract the tile in a window
+            textureTile = pygame.Surface((self.cellWidth,self.cellHeight),pygame.SRCALPHA)
+            textureTile.blit(texture,(0,0),textureRect)
+            # Rotate the surface with the tile
+            rotatedTile = pygame.transform.rotate(textureTile,tile.angle)
+            # Compute the new coordinate on the screen, knowing that we rotate around the center of the tile
+            spritePoint.x -= (rotatedTile.get_width() - textureTile.get_width()) // 2
+            spritePoint.y -= (rotatedTile.get_height() - textureTile.get_height()) // 2
+            # Render the rotatedTile
+            window.blit(rotatedTile,spritePoint)
+
+class ForegroundLayer(Layer):  
+    def __init__(self,ui,gameState,tiles,surfaceFlags=pygame.SRCALPHA):
+        super().__init__(ui)
+        self.gameState = gameState
+        self.surfaceFlags = surfaceFlags
+        self.tiles = tiles
+    
+    def render(self,window):
+        for tile in self.tiles:
+            self.renderTile(window,tile)
+
+class UserInterface():
+    def __init__(self):
+        # Window
+        pygame.init()
+        self.window = pygame.display.set_mode((840,1050))
+        pygame.display.set_caption("Pieces to Pictures")
+        self.gameState = GameState()
+        self.bombTile = MoveableAnimatedTile("bomb.png",Vector2(0,0),Vector2(0,0),73,animateSpeed=0.1)
+
+        self.layers = [
+            ForegroundLayer(self.gameState.cellSize,self.gameState,[self.bombTile])
+        ]
+
+        self.clock = pygame.time.Clock()
+        self.running = True 
 
     def processInput(self):
-        self.moveTileCommand = Vector2(0,0)
+        # Pygame events (close, keyboard and mouse click)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
                 break
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                    break
-                elif event.key == pygame.K_RIGHT:
-                    self.moveTileCommand.x = 1
-                elif event.key == pygame.K_LEFT:
-                    self.moveTileCommand.x = -1
-                elif event.key == pygame.K_DOWN:
-                    self.moveTileCommand.y = 1
-                elif event.key == pygame.K_UP:
-                    self.moveTileCommand.y = -1
-                    
+
+    def render(self,window):
+        for layer in self.layers:
+            layer.render(window)
+    
     def update(self):
-        self.gameState.update(self.moveTileCommand)
-        
-    def renderPiece(self,piece):
-        # Location on screen
-        spritePoint = piece.position.elementwise()*self.cellSize
-        
-        # Unit texture
-        texturePoint = piece.tile.elementwise()*self.cellSize
-        textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
-        self.window.blit(self.pieceTexture,spritePoint,textureRect)
-        
-        # Weapon texure
-        texturePoint = Vector2(0,6).elementwise()*self.cellSize
-        textureRect = Rect(int(texturePoint.x), int(texturePoint.y), self.cellWidth, self.cellHeight)
-        self.window.blit(self.pieceTexture,spritePoint,textureRect)    
-        
-    def render(self):
-        self.window.fill((0,0,0))
-        
-        # Units
-        for tile in self.gameState.pieces:
-            self.renderPiece(tile)
-        
-        pygame.display.update()    
-        
+        for layer in self.layers:
+            for tile in layer.tiles:
+                AnimateTile(tile)
+    
     def run(self):
         while self.running:
             self.processInput()
             self.update()
-            self.render()
+            self.window.fill((0,0,0))
+            self.render(self.window)
+                
+            # Update display
+            pygame.display.update()    
             self.clock.tick(60)
 
-
-
-userInterface = UserInterface()
-userInterface.run()
+ui = UserInterface()
+ui.run()
 
 pygame.quit()
