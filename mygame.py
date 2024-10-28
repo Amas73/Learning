@@ -15,7 +15,7 @@ class Tile():
         self.currentFrame = 0
         
 class MoveableTile(Tile):
-    def __init__(self, imageFile:str, tile:Vector2, position:Vector2,  angle:int=None, moveSpeed:float=0.3):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, angle:int=None, moveSpeed:float=0.3):
         super().__init__(imageFile,tile,position,angle)
         self.speed = moveSpeed
         self.endPosition = copy(self.position)
@@ -30,14 +30,29 @@ class AnimatedTile(Tile):
         self.animationSpeed = animateSpeed
         self.maxFrame = maxFrame
 
+class AnimatedOpenClosedTile(AnimatedTile):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, animateSpeed:float=0.2, openTime:float=0.2, closedTime:float=0.2):
+        super().__init__(imageFile,tile,position,maxFrame,angle,animateSpeed)
+        self.openTime = openTime
+        self.closedTime = closedTime
+        self.pauseState = 0
+
 class MoveableAnimatedTile(Tile):
-    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int,  angle:int=None, moveSpeed:float=0.3, animateSpeed:float=0.2):
+    def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, moveSpeed:float=0.3, animateSpeed:float=0.2):
         super().__init__(imageFile,tile,position,angle)
         self.speed = moveSpeed
         self.endPosition = copy(self.position)
         self.moveVector = Vector2(0,0)
         self.animateSpeed = animateSpeed
         self.maxFrame = maxFrame
+
+class MoveableAnimatedActionTile(MoveableAnimatedTile):
+    def __init__(self, ui, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, moveSpeed:float=0.3, animateSpeed:float=0.2):
+        super().__init__(imageFile,tile,position,maxFrame,angle,moveSpeed,animateSpeed)
+        self.ui = ui
+        self.action = None
+    def run(self):
+        ui.commands.append(self.action)
 
 class GameState():
     def __init__(self):
@@ -50,11 +65,20 @@ class Command():
         raise NotImplementedError()
 
 class AnimateTile(Command):
-    def __init__(self,tile):
+    def run(tile):
         tile.currentFrame += tile.animateSpeed
         if tile.currentFrame >= tile.maxFrame:
-            tile.currentFrame = 0
-        print(tile.currentFrame)
+            if hasattr(tile,"action"):
+                tile.run()
+            else:
+                tile.currentFrame = 0
+
+class EndCommand(Command):
+    def __init__(self, ui:object, tile:object):
+        self.ui = ui
+        self.tile = tile    
+    def run(self):
+        self.ui.running = False
 
 class Layer():
     def __init__(self,cellSize):
@@ -100,6 +124,10 @@ class ForegroundLayer(Layer):
     def render(self,window):
         for tile in self.tiles:
             self.renderTile(window,tile)
+            
+    def update(self):
+        for tile in self.tiles:
+            AnimateTile.run(tile)
 
 class UserInterface():
     def __init__(self):
@@ -108,14 +136,16 @@ class UserInterface():
         self.window = pygame.display.set_mode((840,1050))
         pygame.display.set_caption("Pieces to Pictures")
         self.gameState = GameState()
-        self.bombTile = MoveableAnimatedTile("bomb.png",Vector2(0,0),Vector2(0,0),73,animateSpeed=0.1)
-
+        self.running = True 
+        self.bombTile = MoveableAnimatedActionTile(self,"bomb.png",Vector2(0,0),Vector2(0,0),73,animateSpeed=0.09)
+        self.bombTile.action = EndCommand(self,self.bombTile)
+        self.commands = []
+        bomb = copy(self.bombTile)
         self.layers = [
-            ForegroundLayer(self.gameState.cellSize,self.gameState,[self.bombTile])
+            ForegroundLayer(self.gameState.cellSize,self.gameState,[bomb])
         ]
 
         self.clock = pygame.time.Clock()
-        self.running = True 
 
     def processInput(self):
         # Pygame events (close, keyboard and mouse click)
@@ -129,9 +159,12 @@ class UserInterface():
             layer.render(window)
     
     def update(self):
+        for command in self.commands:
+            command.run()
+        self.commands.clear()
         for layer in self.layers:
-            for tile in layer.tiles:
-                AnimateTile(tile)
+            layer.update()
+            
     
     def run(self):
         while self.running:
