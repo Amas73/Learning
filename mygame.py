@@ -6,6 +6,11 @@ from copy import copy
 def vectorInt(vector:Vector2) -> Vector2:
     return Vector2(int(vector.x), int(vector.y))
 
+
+###############################################################################
+#                               Game State                                    #
+###############################################################################
+
 class Tile():
     def __init__(self, imageFile:str, tile:Vector2, position:Vector2, angle:int=None):
         self.texture = imageFile
@@ -60,6 +65,10 @@ class GameState():
         self.boardPosition = Vector2(1.5*self.cellSize,2.5*self.cellSize)
 
 
+###############################################################################
+#                                Commands                                     #
+###############################################################################
+
 class Command():
     def run(self):
         raise NotImplementedError()
@@ -79,6 +88,11 @@ class EndCommand(Command):
         self.tile = tile    
     def run(self):
         self.ui.running = False
+
+
+###############################################################################
+#                                Rendering                                    #
+###############################################################################
 
 class Layer():
     def __init__(self,cellSize):
@@ -128,6 +142,26 @@ class ForegroundLayer(Layer):
     def update(self):
         for tile in self.tiles:
             AnimateTile.run(tile)
+
+
+###############################################################################
+#                                Game Modes                                   #
+###############################################################################
+
+
+
+
+###############################################################################
+#                             User Interface                                  #
+###############################################################################
+
+class GameMode():
+    def processInput(self):
+        raise NotImplementedError()
+    def update(self):
+        raise NotImplementedError()
+    def render(self, window):
+        raise NotImplementedError()
 
 class UserInterface():
     def __init__(self):
