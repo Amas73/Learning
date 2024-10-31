@@ -148,13 +148,6 @@ class ForegroundLayer(Layer):
 #                                Game Modes                                   #
 ###############################################################################
 
-
-
-
-###############################################################################
-#                             User Interface                                  #
-###############################################################################
-
 class GameMode():
     def processInput(self):
         raise NotImplementedError()
@@ -162,6 +155,39 @@ class GameMode():
         raise NotImplementedError()
     def render(self, window):
         raise NotImplementedError()
+
+class MessageGameMode(GameMode):
+    def __init__(self, ui, message):        
+        self.ui = ui
+        self.font = pygame.font.Font("BD_Cartoon_Shout.ttf", 36)
+        self.message = message
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.ui.quitGame()
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE \
+                or event.key == pygame.K_SPACE \
+                or event.key == pygame.K_RETURN:
+                    self.ui.showMenu()
+                    
+    def update(self):
+        pass
+        
+    def render(self, window):
+        surface = self.font.render(self.message, True, (200, 0, 0))
+        x = (window.get_width() - surface.get_width()) // 2
+        y = (window.get_height() - surface.get_height()) // 2
+        window.blit(surface, (x, y))
+
+
+
+
+###############################################################################
+#                             User Interface                                  #
+###############################################################################
 
 class UserInterface():
     def __init__(self):
@@ -199,7 +225,9 @@ class UserInterface():
         for layer in self.layers:
             layer.update()
             
-    
+    def quitGame(self):
+        self.running = False
+       
     def run(self):
         while self.running:
             self.processInput()
