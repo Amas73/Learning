@@ -1,4 +1,5 @@
 import pygame
+import pygame_menu
 from pygame import Vector2
 from pygame import Rect
 from copy import copy
@@ -27,7 +28,6 @@ class MoveableTile(Tile):
         self.moveVector = Vector2(0,0)
     def findEndPosition(self):
         self.endPosition = Vector2(3,0) # really is a calculation
-        pass
 
 class AnimatedTile(Tile):
     def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, animateSpeed:float=0.2):
@@ -42,10 +42,9 @@ class AnimatedOpenClosedTile(AnimatedTile):
         self.closedTime = closedTime
         self.pauseState = 0
 
-class MoveableAnimatedTile(Tile):
+class MoveableAnimatedTile(MoveableTile):
     def __init__(self, imageFile:str, tile:Vector2, position:Vector2, maxFrame:int, angle:int=None, moveSpeed:float=0.3, animateSpeed:float=0.2):
-        super().__init__(imageFile,tile,position,angle)
-        self.speed = moveSpeed
+        super().__init__(imageFile,tile,position,angle,moveSpeed)
         self.endPosition = copy(self.position)
         self.moveVector = Vector2(0,0)
         self.animateSpeed = animateSpeed
@@ -62,7 +61,7 @@ class MoveableAnimatedActionTile(MoveableAnimatedTile):
 class GameState():
     def __init__(self):
         self.cellSize = Vector2(140,140)
-        self.boardPosition = Vector2(1.5*self.cellSize,2.5*self.cellSize)
+        self.boardPosition = Vector2(1.5*self.cellSize.x,2.5*self.cellSize.y)
 
 
 ###############################################################################
@@ -88,6 +87,12 @@ class EndCommand(Command):
         self.tile = tile    
     def run(self):
         self.ui.running = False
+
+class SetModeCommand(Command):
+    def __init__(self, ui:object, menu:object):
+        self.ui = ui
+        self.ui.currentGameMode = menu
+
 
 
 ###############################################################################
@@ -182,6 +187,158 @@ class MessageGameMode(GameMode):
         y = (window.get_height() - surface.get_height()) // 2
         window.blit(surface, (x, y))
 
+class MenuMainGameMode(GameMode):
+    def __init__(self,ui):
+        self.ui = ui
+
+        # Font
+        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 72)
+        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        
+        menu = pygame_menu.Menu('Pieces To Pictures', 400, 300, theme=pygame_menu.themes.THEME_BLUE)
+
+        menu.add.button('Daily Challenge', SetModeCommand(self.ui,MenuDailyGameMode()))
+        menu.add.button('Start a New Game', SetModeCommand(self.ui,MenuStartGame()))
+        menu.add.button('Resume Game', SetModeCommand(self.ui,PlayGameMode()))
+        menu.add.button('Settings', SetModeCommand(self.ui,MenuSettingsGameMode()))
+        menu.add.button('Quit', pygame_menu.events.EXIT)
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.ui.quitGame()
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.ui.showGame()
+                elif event.key == pygame.K_DOWN:
+                    if self.currentMenuItem < len(self.menuItems) - 1:
+                        self.currentMenuItem += 1
+                elif event.key == pygame.K_UP:
+                    if self.currentMenuItem > 0:
+                        self.currentMenuItem -= 1
+                elif event.key == pygame.K_RETURN:
+                    menuItem = self.menuItems[self.currentMenuItem]
+                    try:
+                        menuItem['action']()
+                    except Exception as ex:
+                        print(ex)
+
+class MenuDailyGameMode(GameMode):
+    def __init__(self,ui):
+        self.ui = ui
+
+        # Font
+        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 72)
+        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        
+        menu = pygame_menu.Menu('Pieces To Pictures', 400, 300, theme=pygame_menu.themes.THEME_BLUE)
+
+        menu.add.label('Daily Challenge Picture:')
+
+        menu.add.selector('Difficulty :', [('Easy', 1), ('Normal', 2), ('Hard', 3), ('Hardest', 4)], onchange=set_difficulty)
+        menu.add.button('Play', SetModeCommand(self.ui,PlayGameMode()))
+        menu.add.button('Back', pygame_menu.events.EXIT)
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.ui.quitGame()
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.ui.showGame()
+                elif event.key == pygame.K_DOWN:
+                    if self.currentMenuItem < len(self.menuItems) - 1:
+                        self.currentMenuItem += 1
+                elif event.key == pygame.K_UP:
+                    if self.currentMenuItem > 0:
+                        self.currentMenuItem -= 1
+                elif event.key == pygame.K_RETURN:
+                    menuItem = self.menuItems[self.currentMenuItem]
+                    try:
+                        menuItem['action']()
+                    except Exception as ex:
+                        print(ex)
+
+class MenuStartGame(GameMode):
+    def __init__(self,ui):
+        self.ui = ui
+
+        # Font
+        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 72)
+        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        
+        menu = pygame_menu.Menu('Pieces To Pictures', 400, 300, theme=pygame_menu.themes.THEME_BLUE)
+
+        menu.add.button('Daily Challenge', SetModeCommand(self.ui,MenuDailyGameMode()))
+        menu.add.button('Start a New Game', SetModeCommand(self.ui,MenuStartGame()))
+        menu.add.button('Resume Game', SetModeCommand(self.ui,ResumeGame()))
+        menu.add.button('Settings', SetModeCommand(self.ui,MenuSettingsGameMode()))
+        menu.add.button('Quit', pygame_menu.events.EXIT)
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.ui.quitGame()
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.ui.showGame()
+                elif event.key == pygame.K_DOWN:
+                    if self.currentMenuItem < len(self.menuItems) - 1:
+                        self.currentMenuItem += 1
+                elif event.key == pygame.K_UP:
+                    if self.currentMenuItem > 0:
+                        self.currentMenuItem -= 1
+                elif event.key == pygame.K_RETURN:
+                    menuItem = self.menuItems[self.currentMenuItem]
+                    try:
+                        menuItem['action']()
+                    except Exception as ex:
+                        print(ex)
+
+class MenuSettingsGameMode(GameMode):
+    def __init__(self,ui):
+        self.ui = ui
+
+        # Font
+        self.titleFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 72)
+        self.itemFont = pygame.font.Font("BD_Cartoon_Shout.ttf", 48)
+        
+        menu = pygame_menu.Menu('Pieces To Pictures', 400, 300, theme=pygame_menu.themes.THEME_BLUE)
+
+        menu.add.button('Daily Challenge', SetModeCommand(self.ui,MenuDailyGameMode()))
+        menu.add.button('Start a New Game', SetModeCommand(self.ui,MenuStartGame()))
+        menu.add.button('Resume Game', SetModeCommand(self.ui,ResumeGame()))
+        menu.add.button('Settings', SetModeCommand(self.ui,MenuSettingsGameMode()))
+        menu.add.button('Quit', pygame_menu.events.EXIT)
+
+    def processInput(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.ui.quitGame()
+                break
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.ui.showGame()
+                elif event.key == pygame.K_DOWN:
+                    if self.currentMenuItem < len(self.menuItems) - 1:
+                        self.currentMenuItem += 1
+                elif event.key == pygame.K_UP:
+                    if self.currentMenuItem > 0:
+                        self.currentMenuItem -= 1
+                elif event.key == pygame.K_RETURN:
+                    menuItem = self.menuItems[self.currentMenuItem]
+                    try:
+                        menuItem['action']()
+                    except Exception as ex:
+                        print(ex)
+
+class PlayGameMode(GameMode):
+    def __init__(self,ui):
+        self.ui = ui
+
 
 
 
@@ -204,6 +361,7 @@ class UserInterface():
         self.layers = [
             ForegroundLayer(self.gameState.cellSize,self.gameState,[bomb])
         ]
+        self.currentGameMode = MenuMainGameMode(self)
 
         self.clock = pygame.time.Clock()
 
